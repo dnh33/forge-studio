@@ -352,6 +352,40 @@ pub fn descriptor_path() -> Option<String> {
     Some(app_dir().join("control.json").to_string_lossy().to_string())
 }
 
+/// The request loop, over an already-bound server. Separate from `start` so a
+/// test can drive it on a throwaway port with a known token, with no Tauri app
+/// and no network involved.
+pub fn serve(server: Server, tok: &str) {
+    let real_port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(0);
+    eprintln!("forge-studio control plane listening on http://127.0.0.1:{real_port}");
+    for mut request in server.incoming_requests() {
+        let method = request.method().clone();
+        let url = request.url().to_string();
+        let path = url.split('?').next().unwrap_or("/").to_string();
+
+        if !authorised(&request, tok) {
+            err(request, 401, "missing or bad bearer token");
+            continue;
+        }
+        if path == "/" && method == Method::Get {
+            ok(request, describe(real_port));
+            continue;
+        }
+        let body = body_of(&mut request);
+        let (code, value) = route(&method, &path, &body);
+        respond(request, code, value.to_string());
+    }
+}
+
+/// Bind and serve. Returns an error instead of panicking so `start` can degrade
+/// gracefully when the port is taken.
+pub fn serve_on(addr: &str, tok: &str) -> std::io::Result<()> {
+    let server = Server::http(addr)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::AddrInUse, e.to_string()))?;
+    serve(server, tok);
+    Ok(())
+}
+
 /// Start the control plane on a background thread. Never fails the app: if the
 /// port is taken or the feature is off, it logs and returns.
 pub fn start() {
@@ -368,10 +402,8 @@ pub fn start() {
         .unwrap_or(DEFAULT_PORT);
 
     std::thread::spawn(move || {
-        let addr = match std::env::var("FORGE_CONTROL_ADDR") {
-            Ok(a) => a,
-            Err(_) => format!("127.0.0.1:{port}"),
-        };
+        let addr = std::env::var("FORGE_CONTROL_ADDR")
+            .unwrap_or_else(|_| format!("127.0.0.1:{port}"));
         let server = match Server::http(&addr) {
             Ok(s) => s,
             Err(e) => {
@@ -393,33 +425,118 @@ pub fn start() {
         let _ = std::fs::write(dir.join("control.json"), descriptor.to_string());
         let _ = std::fs::write(dir.join("control-token"), &tok);
         eprintln!(
-            "forge-studio control plane listening on http://127.0.0.1:{real_port} \
-             (token in {})",
+            "forge-studio control plane listening on http://127.0.0.1:{real_port} (token in {})",
             dir.join("control.json").display()
         );
-
-        for mut request in server.incoming_requests() {
-            let method = request.method().clone();
-            let url = request.url().to_string();
-            let path = url.split('?').next().unwrap_or("/").to_string();
-
-            if path == "/" && method == Method::Get {
-                // discovery is still token-gated; the descriptor file is the local path in
-                if !authorised(&request, &tok) {
-                    err(request, 401, "missing or bad bearer token");
-                    continue;
-                }
-                ok(request, describe(real_port));
-                continue;
-            }
-            if !authorised(&request, &tok) {
-                err(request, 401, "missing or bad bearer token");
-                continue;
-            }
-
-            let body = body_of(&mut request);
-            let (code, value) = route(&method, &path, &body);
-            respond(request, code, value.to_string());
-        }
+        serve(server, &tok);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+
+    const TOK: &str = "test-token-0123456789abcdef";
+
+    /// A real server on a real ephemeral port, driven over a real socket. The
+    /// routes exercised here deliberately never reach GitHub, so the suite needs
+    /// no network and no credentials.
+    fn test_server() -> u16 {
+        let server = Server::http("127.0.0.1:0").expect("bind ephemeral port");
+        let port = server
+            .server_addr()
+            .to_ip()
+            .expect("tcp addr")
+            .port();
+        std::thread::spawn(move || serve(server, TOK));
+        port
+    }
+
+    fn request(port: u16, method: &str, path: &str, token: Option<&str>, body: &str) -> (u16, String) {
+        let mut sock = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        let auth = match token {
+            Some(t) => format!("Authorization: Bearer {t}\r\n"),
+            None => String::new(),
+        };
+        let raw = format!(
+            "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n{auth}\
+             Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        sock.write_all(raw.as_bytes()).expect("write");
+        let mut buf = String::new();
+        sock.read_to_string(&mut buf).expect("read");
+        let code = buf
+            .split_whitespace()
+            .nth(1)
+            .and_then(|c| c.parse().ok())
+            .unwrap_or(0);
+        let payload = buf.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
+        (code, payload)
+    }
+
+    #[test]
+    fn a_request_with_no_token_is_refused() {
+        let port = test_server();
+        let (code, _) = request(port, "GET", "/", None, "");
+        assert_eq!(code, 401, "the control plane must not answer unauthenticated callers");
+    }
+
+    #[test]
+    fn a_request_with_the_wrong_token_is_refused() {
+        let port = test_server();
+        let (code, _) = request(port, "GET", "/", Some("not-the-token"), "");
+        assert_eq!(code, 401);
+    }
+
+    #[test]
+    fn the_right_token_gets_the_endpoint_list() {
+        let port = test_server();
+        let (code, body) = request(port, "GET", "/", Some(TOK), "");
+        assert_eq!(code, 200);
+        assert!(body.contains("forge-studio"), "body was: {body}");
+        assert!(body.contains("/dispatch"), "the contract must be discoverable");
+    }
+
+    #[test]
+    fn an_unknown_endpoint_is_a_readable_404() {
+        let port = test_server();
+        let (code, body) = request(port, "GET", "/nope", Some(TOK), "");
+        assert_eq!(code, 404);
+        assert!(body.contains("no such endpoint"), "body was: {body}");
+    }
+
+    #[test]
+    fn malformed_json_is_rejected_before_any_work_happens() {
+        let port = test_server();
+        let (code, body) = request(port, "PUT", "/set/whatever", Some(TOK), "{ not json");
+        assert_eq!(code, 400, "a bad body must fail fast, not after a network round trip");
+        assert!(body.contains("bad JSON"), "body was: {body}");
+    }
+
+    #[test]
+    fn a_missing_required_field_is_rejected() {
+        let port = test_server();
+        let (code, body) = request(port, "POST", "/ideate", Some(TOK), "{}");
+        assert_eq!(code, 400);
+        assert!(body.contains("brief"), "body was: {body}");
+    }
+
+    #[test]
+    fn tokens_are_long_and_not_repeated() {
+        let a = random_token();
+        let b = random_token();
+        assert_eq!(a.len(), 48, "three 16-hex chunks");
+        assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(a, b, "two tokens in one process must differ");
+    }
+
+    #[test]
+    fn the_descriptor_names_the_endpoint() {
+        let d = describe(7317);
+        assert_eq!(d["name"], "forge-studio");
+        assert_eq!(d["port"].as_u64(), Some(7317));
+        assert!(d["endpoints"].as_array().map(|a| !a.is_empty()).unwrap_or(false));
+    }
 }

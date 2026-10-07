@@ -31,3 +31,17 @@ jobs:
       - name: cargo clippy
         working-directory: app/src-tauri
         run: cargo clippy --all-targets -- -D warnings
+      - name: cargo test
+        working-directory: app/src-tauri
+        run: cargo test --all-targets
+
+  mcp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test the MCP server against a stub control plane
+        working-directory: mcp
+        run: node --test
