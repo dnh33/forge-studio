@@ -29,11 +29,18 @@ pub fn key() -> Option<String> {
             return Some(k.trim().to_string());
         }
     }
-    entry(USER_KEY).ok()?.get_password().ok().filter(|s| !s.is_empty())
+    entry(USER_KEY)
+        .ok()?
+        .get_password()
+        .ok()
+        .filter(|s| !s.is_empty())
 }
 
 fn key_source() -> &'static str {
-    if std::env::var("OPENROUTER_API_KEY").map(|v| !v.trim().is_empty()).unwrap_or(false) {
+    if std::env::var("OPENROUTER_API_KEY")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false)
+    {
         "environment"
     } else if key().is_some() {
         "OS credential store"
@@ -58,11 +65,17 @@ pub fn clear_key() -> Result<(), String> {
 }
 
 pub fn get_model() -> Option<String> {
-    entry(USER_MODEL).ok()?.get_password().ok().filter(|s| !s.is_empty())
+    entry(USER_MODEL)
+        .ok()?
+        .get_password()
+        .ok()
+        .filter(|s| !s.is_empty())
 }
 
 pub fn set_model(m: String) -> Result<(), String> {
-    entry(USER_MODEL)?.set_password(m.trim()).map_err(|e| e.to_string())
+    entry(USER_MODEL)?
+        .set_password(m.trim())
+        .map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------- types
@@ -127,8 +140,14 @@ pub async fn models() -> Result<Vec<OrModel>, String> {
             name: m["name"].as_str().unwrap_or(&id).to_string(),
             id,
             context: m["context_length"].as_u64().unwrap_or(0),
-            prompt_price: p["prompt"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0),
-            completion_price: p["completion"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0),
+            prompt_price: p["prompt"]
+                .as_str()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0.0),
+            completion_price: p["completion"]
+                .as_str()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0.0),
         });
     }
     out.sort_by(|a, b| a.id.cmp(&b.id));
@@ -194,7 +213,10 @@ async fn chat(system: &str, user: &str, model: &str, temperature: f64) -> Result
 
 fn strip_fences(s: &str) -> String {
     let t = s.trim();
-    let t = t.strip_prefix("```json").or_else(|| t.strip_prefix("```")).unwrap_or(t);
+    let t = t
+        .strip_prefix("```json")
+        .or_else(|| t.strip_prefix("```"))
+        .unwrap_or(t);
     t.trim_end_matches("```").trim().to_string()
 }
 
@@ -214,7 +236,8 @@ pub async fn ideate(brief: String, model: String, count: u32) -> Result<String, 
     let raw = chat(&system, &user, &model, 0.9).await?;
     let body = strip_fences(&raw);
     // validate before handing anything to the UI
-    let v: Value = serde_json::from_str(&body).map_err(|e| format!("Model returned invalid JSON: {e}"))?;
+    let v: Value =
+        serde_json::from_str(&body).map_err(|e| format!("Model returned invalid JSON: {e}"))?;
     if v["items"].as_object().map(|o| o.is_empty()).unwrap_or(true) {
         return Err("Model returned no items.".into());
     }
@@ -231,7 +254,11 @@ pub async fn sharpen(line: String, model: String) -> Result<String, String> {
 }
 
 /// General advisory call — same plumbing as the CLI /advisor, usable in the studio.
-pub async fn advise(question: String, context: Option<String>, model: String) -> Result<String, String> {
+pub async fn advise(
+    question: String,
+    context: Option<String>,
+    model: String,
+) -> Result<String, String> {
     let system = "You are a senior technical advisor. Answer directly and concretely. \
                   State uncertainty as uncertainty. No filler, no restating the question.";
     let user = match context {

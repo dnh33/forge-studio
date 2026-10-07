@@ -27,9 +27,14 @@ pub fn token() -> Result<String, String> {
     let out = std::process::Command::new("gh")
         .args(["auth", "token", "--hostname", "github.com"])
         .output()
-        .map_err(|e| format!("GitHub CLI not found ({e}). Install `gh`, then run `gh auth login`."))?;
+        .map_err(|e| {
+            format!("GitHub CLI not found ({e}). Install `gh`, then run `gh auth login`.")
+        })?;
     if !out.status.success() {
-        return Err("Not logged in to GitHub. Run `gh auth login` in a terminal, then reopen the studio.".into());
+        return Err(
+            "Not logged in to GitHub. Run `gh auth login` in a terminal, then reopen the studio."
+                .into(),
+        );
     }
     let t = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if t.is_empty() {
@@ -45,7 +50,10 @@ pub fn client() -> Result<reqwest::Client, String> {
         reqwest::header::AUTHORIZATION,
         format!("Bearer {t}").parse().map_err(|_| "bad token")?,
     );
-    h.insert(reqwest::header::USER_AGENT, "forge-studio/0.1".parse().unwrap());
+    h.insert(
+        reqwest::header::USER_AGENT,
+        "forge-studio/0.1".parse().unwrap(),
+    );
     h.insert(
         reqwest::header::ACCEPT,
         "application/vnd.github+json".parse().unwrap(),
@@ -363,8 +371,11 @@ pub async fn list_renders() -> Result<Vec<RenderImage>, String> {
     let mut out = Vec::new();
     for e in v["tree"].as_array().cloned().unwrap_or_default() {
         let path = e["path"].as_str().unwrap_or("");
-        if !path.ends_with(".png") || path.ends_with(".cut.png") || path.ends_with(".depth.png")
-            || path.ends_with(".glow.png") || path.contains("/sheets/")
+        if !path.ends_with(".png")
+            || path.ends_with(".cut.png")
+            || path.ends_with(".depth.png")
+            || path.ends_with(".glow.png")
+            || path.contains("/sheets/")
         {
             continue;
         }

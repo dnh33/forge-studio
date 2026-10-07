@@ -41,7 +41,15 @@ async fn dispatch_render(
     shards: String,
     adhoc: String,
 ) -> Result<(), String> {
-    github::dispatch(github::DispatchOpts { set, only, variants, steps, shards, adhoc }).await
+    github::dispatch(github::DispatchOpts {
+        set,
+        only,
+        variants,
+        steps,
+        shards,
+        adhoc,
+    })
+    .await
 }
 
 #[tauri::command]
@@ -119,7 +127,11 @@ async fn or_sharpen(line: String, model: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn or_advise(question: String, context: Option<String>, model: String) -> Result<String, String> {
+async fn or_advise(
+    question: String,
+    context: Option<String>,
+    model: String,
+) -> Result<String, String> {
     openrouter::advise(question, context, model).await
 }
 
