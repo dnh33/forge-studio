@@ -377,15 +377,6 @@ pub fn serve(server: Server, tok: &str) {
     }
 }
 
-/// Bind and serve. Returns an error instead of panicking so `start` can degrade
-/// gracefully when the port is taken.
-pub fn serve_on(addr: &str, tok: &str) -> std::io::Result<()> {
-    let server = Server::http(addr)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::AddrInUse, e.to_string()))?;
-    serve(server, tok);
-    Ok(())
-}
-
 /// Start the control plane on a background thread. Never fails the app: if the
 /// port is taken or the feature is off, it logs and returns.
 pub fn start() {
