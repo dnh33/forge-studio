@@ -84,7 +84,11 @@ fn ok(request: tiny_http::Request, body: serde_json::Value) {
 }
 
 fn err(request: tiny_http::Request, code: u16, msg: &str) {
-    respond(request, code, serde_json::json!({ "error": msg }).to_string());
+    respond(
+        request,
+        code,
+        serde_json::json!({ "error": msg }).to_string(),
+    );
 }
 
 fn body_of(request: &mut tiny_http::Request) -> String {
@@ -107,7 +111,11 @@ fn authorised(request: &tiny_http::Request, expected: &str) -> bool {
         Some(v) => {
             let v = v.strip_prefix("Bearer ").unwrap_or(&v).trim();
             // constant-time-ish compare; both are generated, not secret-derived
-            v.len() == expected.len() && v.bytes().zip(expected.bytes()).fold(0u8, |a, (x, y)| a | (x ^ y)) == 0
+            v.len() == expected.len()
+                && v.bytes()
+                    .zip(expected.bytes())
+                    .fold(0u8, |a, (x, y)| a | (x ^ y))
+                    == 0
         }
         None => false,
     }
@@ -145,11 +153,20 @@ fn route(method: &Method, path: &str, body: &str) -> (u16, serde_json::Value) {
     } else {
         match serde_json::from_str(body) {
             Ok(v) => v,
-            Err(e) => return (400, serde_json::json!({ "error": format!("bad JSON body: {e}") })),
+            Err(e) => {
+                return (
+                    400,
+                    serde_json::json!({ "error": format!("bad JSON body: {e}") }),
+                )
+            }
         }
     };
     let s = |k: &str, d: &str| -> String {
-        parsed.get(k).and_then(|v| v.as_str()).unwrap_or(d).to_string()
+        parsed
+            .get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or(d)
+            .to_string()
     };
 
     match (method, seg.as_slice()) {
@@ -157,26 +174,41 @@ fn route(method: &Method, path: &str, body: &str) -> (u16, serde_json::Value) {
             let id = tauri::async_runtime::block_on(crate::github::identity());
             let or = crate::openrouter::status();
             match id {
-                Ok(i) => (200, serde_json::json!({ "github": i, "openrouter": {
-                    "configured": or.configured, "source": or.source, "model": or.model } })),
-                Err(e) => (200, serde_json::json!({ "github_error": e, "openrouter": {
-                    "configured": or.configured, "source": or.source, "model": or.model } })),
+                Ok(i) => (
+                    200,
+                    serde_json::json!({ "github": i, "openrouter": {
+                    "configured": or.configured, "source": or.source, "model": or.model } }),
+                ),
+                Err(e) => (
+                    200,
+                    serde_json::json!({ "github_error": e, "openrouter": {
+                    "configured": or.configured, "source": or.source, "model": or.model } }),
+                ),
             }
         }
-        (&Method::Get, ["sets"]) => match tauri::async_runtime::block_on(crate::github::list_sets()) {
-            Ok(v) => (200, serde_json::to_value(v).unwrap_or(serde_json::json!([]))),
-            Err(e) => (502, serde_json::json!({ "error": e })),
-        },
+        (&Method::Get, ["sets"]) => {
+            match tauri::async_runtime::block_on(crate::github::list_sets()) {
+                Ok(v) => (
+                    200,
+                    serde_json::to_value(v).unwrap_or(serde_json::json!([])),
+                ),
+                Err(e) => (502, serde_json::json!({ "error": e })),
+            }
+        }
         (&Method::Get, ["set", slug]) => {
             match tauri::async_runtime::block_on(crate::github::get_set(slug.to_string())) {
-                Ok(v) => (200, serde_json::to_value(v).unwrap_or(serde_json::json!({}))),
+                Ok(v) => (
+                    200,
+                    serde_json::to_value(v).unwrap_or(serde_json::json!({})),
+                ),
                 Err(e) => (502, serde_json::json!({ "error": e })),
             }
         }
         (&Method::Put, ["set", slug]) => {
-            match tauri::async_runtime::block_on(
-                crate::github::save_set(slug.to_string(), body.to_string()),
-            ) {
+            match tauri::async_runtime::block_on(crate::github::save_set(
+                slug.to_string(),
+                body.to_string(),
+            )) {
                 Ok(sha) => (200, serde_json::json!({ "saved": sha })),
                 Err(e) => (502, serde_json::json!({ "error": e })),
             }
@@ -195,28 +227,50 @@ fn route(method: &Method, path: &str, body: &str) -> (u16, serde_json::Value) {
                 Err(e) => (502, serde_json::json!({ "error": e })),
             }
         }
-        (&Method::Get, ["runs"]) => match tauri::async_runtime::block_on(crate::github::list_runs(15)) {
-            Ok(v) => (200, serde_json::to_value(v).unwrap_or(serde_json::json!([]))),
-            Err(e) => (502, serde_json::json!({ "error": e })),
-        },
+        (&Method::Get, ["runs"]) => {
+            match tauri::async_runtime::block_on(crate::github::list_runs(15)) {
+                Ok(v) => (
+                    200,
+                    serde_json::to_value(v).unwrap_or(serde_json::json!([])),
+                ),
+                Err(e) => (502, serde_json::json!({ "error": e })),
+            }
+        }
         (&Method::Get, ["run", id]) => match id.parse::<u64>() {
             Ok(id) => match tauri::async_runtime::block_on(crate::github::get_run(id)) {
-                Ok(v) => (200, serde_json::to_value(v).unwrap_or(serde_json::json!({}))),
+                Ok(v) => (
+                    200,
+                    serde_json::to_value(v).unwrap_or(serde_json::json!({})),
+                ),
                 Err(e) => (502, serde_json::json!({ "error": e })),
             },
-            Err(_) => (400, serde_json::json!({ "error": "run id must be a number" })),
+            Err(_) => (
+                400,
+                serde_json::json!({ "error": "run id must be a number" }),
+            ),
         },
         (&Method::Get, ["run", id, "outputs"]) => match id.parse::<u64>() {
             Ok(id) => match tauri::async_runtime::block_on(crate::github::run_outputs(id)) {
-                Ok(v) => (200, serde_json::to_value(v).unwrap_or(serde_json::json!([]))),
+                Ok(v) => (
+                    200,
+                    serde_json::to_value(v).unwrap_or(serde_json::json!([])),
+                ),
                 Err(e) => (502, serde_json::json!({ "error": e })),
             },
-            Err(_) => (400, serde_json::json!({ "error": "run id must be a number" })),
+            Err(_) => (
+                400,
+                serde_json::json!({ "error": "run id must be a number" }),
+            ),
         },
-        (&Method::Get, ["renders"]) => match tauri::async_runtime::block_on(crate::github::list_renders()) {
-            Ok(v) => (200, serde_json::to_value(v).unwrap_or(serde_json::json!([]))),
-            Err(e) => (502, serde_json::json!({ "error": e })),
-        },
+        (&Method::Get, ["renders"]) => {
+            match tauri::async_runtime::block_on(crate::github::list_renders()) {
+                Ok(v) => (
+                    200,
+                    serde_json::to_value(v).unwrap_or(serde_json::json!([])),
+                ),
+                Err(e) => (502, serde_json::json!({ "error": e })),
+            }
+        }
         (&Method::Post, ["download"]) => {
             let dir = s("dir", "");
             if dir.is_empty() {
@@ -225,7 +279,11 @@ fn route(method: &Method, path: &str, body: &str) -> (u16, serde_json::Value) {
             let urls: Vec<String> = parsed
                 .get("urls")
                 .and_then(|v| v.as_array())
-                .map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
                 .unwrap_or_default();
             if urls.is_empty() {
                 return (400, serde_json::json!({ "error": "urls is required" }));
@@ -233,12 +291,18 @@ fn route(method: &Method, path: &str, body: &str) -> (u16, serde_json::Value) {
             let mut saved = Vec::new();
             let mut failures = Vec::new();
             for u in urls {
-                match tauri::async_runtime::block_on(crate::github::download(u.clone(), dir.clone())) {
+                match tauri::async_runtime::block_on(crate::github::download(
+                    u.clone(),
+                    dir.clone(),
+                )) {
                     Ok(p) => saved.push(p),
                     Err(e) => failures.push(serde_json::json!({ "url": u, "error": e })),
                 }
             }
-            (200, serde_json::json!({ "saved": saved, "failed": failures }))
+            (
+                200,
+                serde_json::json!({ "saved": saved, "failed": failures }),
+            )
         }
         (&Method::Post, ["ideate"]) => {
             let brief = s("brief", "");
@@ -260,20 +324,30 @@ fn route(method: &Method, path: &str, body: &str) -> (u16, serde_json::Value) {
             if q.is_empty() {
                 return (400, serde_json::json!({ "error": "question is required" }));
             }
-            let ctx = parsed.get("context").and_then(|v| v.as_str()).map(|s| s.to_string());
-            match tauri::async_runtime::block_on(crate::openrouter::advise(q, ctx, s("model", ""))) {
+            let ctx = parsed
+                .get("context")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            match tauri::async_runtime::block_on(crate::openrouter::advise(q, ctx, s("model", "")))
+            {
                 Ok(v) => (200, serde_json::json!({ "answer": v })),
                 Err(e) => (502, serde_json::json!({ "error": e })),
             }
         }
-        _ => (404, serde_json::json!({ "error": "no such endpoint", "see": "GET /" })),
+        _ => (
+            404,
+            serde_json::json!({ "error": "no such endpoint", "see": "GET /" }),
+        ),
     }
 }
 
 /// Start the control plane on a background thread. Never fails the app: if the
 /// port is taken or the feature is off, it logs and returns.
 pub fn start() {
-    if std::env::var("FORGE_CONTROL").map(|v| v.eq_ignore_ascii_case("off")).unwrap_or(false) {
+    if std::env::var("FORGE_CONTROL")
+        .map(|v| v.eq_ignore_ascii_case("off"))
+        .unwrap_or(false)
+    {
         eprintln!("forge-studio control plane disabled (FORGE_CONTROL=off)");
         return;
     }
@@ -294,7 +368,11 @@ pub fn start() {
                 return;
             }
         };
-        let real_port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(port);
+        let real_port = server
+            .server_addr()
+            .to_ip()
+            .map(|a| a.port())
+            .unwrap_or(port);
         let tok = token();
         let dir = app_dir();
         let descriptor = serde_json::json!({
