@@ -1,8 +1,8 @@
 {
   "name": "forge-studio",
   "private": true,
-  "version": "0.1.0",
-  "description": "Desktop studio for the forge-render pipeline",
+  "version": "0.2.0",
+  "description": "Desktop studio for the forge-images pipeline",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",

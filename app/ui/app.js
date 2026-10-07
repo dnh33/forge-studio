@@ -64,14 +64,25 @@ $$(".tab").forEach((t) =>
 
 // ------------------------------------------------------------------ items editor
 
+function grow(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 220) + "px";
+}
+
 function addItem(id = "", seed = "", line = "") {
   const row = document.createElement("div");
   row.className = "item";
   row.innerHTML = `
-    <input data-k="id" placeholder="item-id" value="${esc(id)}" spellcheck="false">
-    <input data-k="seed" placeholder="seed" value="${esc(seed)}" spellcheck="false">
-    <input data-k="line" placeholder="What is in this image?" value="${esc(line)}" spellcheck="false">
-    <button class="ghost small" data-k="del" title="remove">&#10005;</button>`;
+    <input data-k="id" placeholder="item-id" value="${esc(id)}" spellcheck="false"
+      aria-label="Item id" autocomplete="off">
+    <input data-k="seed" placeholder="seed" value="${esc(seed)}" spellcheck="false"
+      aria-label="Seed for this item" inputmode="numeric" autocomplete="off">
+    <textarea data-k="line" rows="2" placeholder="What is in this image?" spellcheck="false"
+      aria-label="Prompt line for this item">${esc(line)}</textarea>
+    <button class="ghost small" data-k="del" title="Remove this item" aria-label="Remove this item">&#10005;</button>`;
+  const ta = row.querySelector('[data-k="line"]');
+  ta.addEventListener("input", () => grow(ta));
+  requestAnimationFrame(() => grow(ta));
   row.querySelector('[data-k="del"]').addEventListener("click", () => row.remove());
   $("#items").appendChild(row);
   return row;
@@ -205,7 +216,23 @@ $("#gear").addEventListener("click", async () => {
   $("#settings").classList.remove("hidden");
   await loadOr();
   await loadOrModels();
+  await loadControl();
 });
+
+async function loadControl() {
+  let path;
+  try {
+    path = await invoke("control_descriptor");
+  } catch {
+    path = null;
+  }
+  const el = $("#ctlState");
+  if (!el) return;
+  el.innerHTML = path
+    ? "Listening on loopback. Any local agent can drive this app through it, and the port and token are published in "
+      + "<code>" + esc(path) + "</code>. Endpoints and the bundled MCP server are described in <code>docs/CONTROL.md</code>."
+    : "Off. The app was started with FORGE_CONTROL=off, so nothing can drive it from outside.";
+}
 $("#setClose").addEventListener("click", () => $("#settings").classList.add("hidden"));
 $("#setDone").addEventListener("click", () => $("#settings").classList.add("hidden"));
 

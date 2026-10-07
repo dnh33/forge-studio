@@ -339,6 +339,19 @@ fn route(method: &Method, path: &str, body: &str) -> (u16, serde_json::Value) {
     }
 }
 
+/// Path to the descriptor file that publishes the port and token, or None when
+/// the control plane is disabled. The UI shows this so the interface is
+/// discoverable rather than a secret only the docs know about.
+pub fn descriptor_path() -> Option<String> {
+    if std::env::var("FORGE_CONTROL")
+        .map(|v| v.eq_ignore_ascii_case("off"))
+        .unwrap_or(false)
+    {
+        return None;
+    }
+    Some(app_dir().join("control.json").to_string_lossy().to_string())
+}
+
 /// Start the control plane on a background thread. Never fails the app: if the
 /// port is taken or the feature is off, it logs and returns.
 pub fn start() {

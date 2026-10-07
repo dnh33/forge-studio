@@ -58,7 +58,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: app
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', '0.1.0') }}
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.0.0-dev' }}
           releaseName: "Forge Studio ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}"
           releaseBody: |
             Desktop studio for the forge-images pipeline.

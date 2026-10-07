@@ -136,6 +136,11 @@ async fn or_advise(
     openrouter::advise(question, context, model).await
 }
 
+#[tauri::command]
+fn control_descriptor() -> Option<String> {
+    control::descriptor_path()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -167,6 +172,7 @@ pub fn run() {
             or_ideate,
             or_sharpen,
             or_advise,
+            control_descriptor,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Forge Studio");
