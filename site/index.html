@@ -198,6 +198,19 @@ pre{margin:16px 0 0;background:#0b0807;border:1px solid var(--line);border-left:
 @media (max-width:880px){.get-grid{grid-template-columns:1fr}
   .getfig img{max-width:100%}}
 
+/* --------------------------------------------- control */
+.ctl-lede{color:var(--bone2);max-width:68ch;margin:0 0 22px}
+.ctlstats{list-style:none;margin:30px 0 0;padding:0;display:grid;
+
+  grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(22px,3vw,44px)}
+.ctlstats li{display:flex;flex-direction:column;gap:8px;padding-top:18px;border-top:1px solid var(--line2)}
+.ctlstats b{font-family:var(--serif);font-size:clamp(1.6rem,1.1rem + 1.6vw,2.4rem);color:var(--brass2);
+  line-height:1;font-weight:600}
+.ctlstats span{color:var(--muted);font-size:.92rem;line-height:1.6}
+@media (max-width:880px){.ctlstats{grid-template-columns:1fr;gap:20px}}
+#control pre{margin-top:0}
+#control .note a{color:var(--brass2);text-decoration:none;border-bottom:1px solid var(--line2)}
+
 /* --------------------------------------------- footer */
 footer{border-top:1px solid var(--line);margin-top:clamp(48px,7vw,96px);
   padding:clamp(34px,4vw,56px) 0 60px}
@@ -233,6 +246,7 @@ footer a:hover{color:var(--brass2);border-color:var(--brass)}
       <a href="#run">How a run works</a>
       <a href="#free">Why it is free</a>
       <a href="#key">Your key</a>
+      <a href="#control">Drive it</a>
       <a href="#get">Install</a>
     </nav>
     <a class="btn" href="https://github.com/dnh33/forge-studio/releases">Download</a>
@@ -349,6 +363,26 @@ footer a:hover{color:var(--brass2);border-color:var(--brass)}
           </div>
         </dl>
       </div>
+    </div>
+  </section>
+
+  <!-- ================================================= control -->
+  <section class="sec" id="control">
+    <div class="wrap">
+      <h2 class="reveal">Drive it from outside</h2>
+      <p class="reveal ctl-lede">The window is not the only way in. While it runs, the studio publishes a loopback
+        control plane, and the repository ships an MCP server on top of it. An agent can read and write sets,
+        dispatch a run, follow it, list the renders, download them, and use the ideation calls.</p>
+      <pre class="reveal">TOKEN=$(jq -r .token "$APPDATA/forge-studio/control.json")
+curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7317/status</pre>
+      <ul class="ctlstats reveal">
+        <li><b>13</b><span>endpoints, covering sets, dispatch, runs, outputs, renders, download, ideate and advise</span></li>
+        <li><b>12</b><span>MCP tools, the same surface an agent calls directly</span></li>
+        <li><b>0</b><span>secrets shared: the token is generated locally and published beside the port</span></li>
+      </ul>
+      <p class="reveal note">Loopback only and token-gated, so nothing off the machine can reach it. Off with
+        <code>FORGE_CONTROL=off</code>. The full contract is in
+        <a href="https://github.com/dnh33/forge-studio/blob/main/docs/CONTROL.md">docs/CONTROL.md</a>.</p>
     </div>
   </section>
 
