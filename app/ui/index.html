@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Forge Studio</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 40 40" aria-hidden="true">
+      <defs>
+        <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#ffd79a"/><stop offset="1" stop-color="#c2410c"/>
+        </linearGradient>
+      </defs>
+      <path d="M6 12 L20 5 L34 12 L34 25 L20 32 L6 25 Z" fill="#3c2416" stroke="#5a3a24" stroke-width="1.2"/>
+      <path d="M6 25 L20 32 L34 25 L34 33 L20 40 L6 33 Z" fill="#5a341c" stroke="#2a1810" stroke-width="1"/>
+      <path d="M6 12 L20 5 L34 12 L34 25 L20 32 L6 25 Z" fill="#3a2418" stroke="url(#g1)" stroke-width="1.8"/>
+      <path d="M11 14.5 L20 10 L29 14.5 L29 22 L20 26.5 L11 22 Z" fill="#8a4a20" stroke="#1b1109" stroke-width="1.2"/>
+      <path d="M14.5 16.5 L20 13.6 L25.5 16.5 L25.5 20.2 L20 23.1 L14.5 20.2 Z" fill="#e8843c"/>
+      <path d="M17.4 17.8 L20 16.4 L22.6 17.8 L22.6 19.5 L20 20.9 L17.4 19.5 Z" fill="#ffe3c2"/>
+    </svg>
+    <div class="wordmark"><span>FORGE</span> <b>STUDIO</b></div>
+  </div>
+  <div class="creed">the forge is not idle</div>
+  <nav class="tabs">
+    <button data-tab="studio" class="tab active">Studio</button>
+    <button data-tab="sets" class="tab">Sets</button>
+    <button data-tab="runs" class="tab">Runs <span id="runDot" class="dot hidden"></span></button>
+    <button data-tab="gallery" class="tab">Gallery</button>
+  </nav>
+  <div class="who" id="who"><span class="muted">checking session…</span></div>
+  <button id="gear" class="gear" title="Settings">&#9881;</button>
+</header>
+
+<main>
+  <!-- ---------------------------------------------------------- STUDIO -->
+  <section id="tab-studio" class="panel active">
+
+    <div class="card" id="ideateCard">
+      <h2>Ideate <span class="muted" id="orBadge">no OpenRouter key</span></h2>
+      <div class="row">
+        <label style="flex:1 1 320px" class="block">Brief — what do you want to see?
+          <textarea id="brief" rows="2" spellcheck="false"
+            placeholder="e.g. a drowned forge-temple, hooded acolytes, candle smoke, one green optic"></textarea>
+        </label>
+        <label class="block">Items <input id="orCount" type="number" value="4" min="1" max="12"></label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="orForge" class="secondary" style="flex:1">Forge items from the brief</button>
+        <button id="orAsk" class="ghost small">Advise…</button>
+      </div>
+      <p class="hint" id="ideateHint">Writes items straight into the composer below, with the style block and seeds filled in.</p>
+    </div>
+
+    <div class="grid">
+      <div class="card grow">
+        <h2>Compose a set</h2>
+        <div class="row">
+          <label>Set slug <input id="setSlug" placeholder="my-set" spellcheck="false"></label>
+          <label>Width <input id="setW" type="number" value="768" min="256" max="2048" step="64"></label>
+          <label>Height <input id="setH" type="number" value="1024" min="256" max="2048" step="64"></label>
+        </div>
+        <label class="block">Shared style block
+          <textarea id="setStyle" rows="4" spellcheck="false"
+            placeholder="One block of text appended to every item, so the set holds together."></textarea>
+        </label>
+        <div class="items-head">
+          <h3>Items</h3>
+          <button id="addItem" class="ghost small">+ item</button>
+        </div>
+        <div id="items" class="items"></div>
+      </div>
+
+      <div class="card side">
+        <h2>Render</h2>
+        <div class="row">
+          <label>Seeds / item <input id="variants" type="number" value="2" min="1" max="8"></label>
+          <label>Steps <input id="steps" type="number" value="4" min="1" max="40"></label>
+          <label>Shards <input id="shards" type="number" value="8" min="1" max="20"></label>
+        </div>
+        <p class="hint">Shards run in parallel; each downloads the model once. More shards = faster batch.</p>
+        <button id="dispatchAdhoc" class="primary">Quick render <small>one-off, not committed</small></button>
+        <button id="dispatchSaved" class="secondary">Save set &amp; render</button>
+        <hr>
+        <p class="hint" id="planHint">Nothing queued.</p>
+        <button id="pipelineLink" class="linkish">Open the pipeline on GitHub &#8599;</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- SETS -->
+  <section id="tab-sets" class="panel">
+    <div class="card">
+      <h2>Prompt sets <span class="muted" id="setsCount"></span>
+        <span class="spacer"></span>
+        <button id="reloadSets" class="ghost small">reload</button>
+      </h2>
+      <div id="sets" class="setlist"></div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- RUNS -->
+  <section id="tab-runs" class="panel">
+    <div class="card">
+      <h2>Runs <span class="spacer"></span>
+        <button id="reloadRuns" class="ghost small">reload</button>
+      </h2>
+      <div id="runs" class="runlist"></div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- GALLERY -->
+  <section id="tab-gallery" class="panel">
+    <div class="card">
+      <h2>Gallery <span class="muted" id="galleryCount"></span>
+        <span class="spacer"></span>
+        <button id="selectAll" class="ghost small">select all</button>
+        <button id="downloadSel" class="primary small">Download selected&#8230;</button>
+      </h2>
+      <div id="gallery" class="gallery"></div>
+    </div>
+  </section>
+</main>
+
+<!-- run finished: preview, then offer the download -->
+<div id="modal" class="modal hidden">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h3 id="modalTitle">Run finished</h3>
+      <button id="modalClose" class="ghost small">close</button>
+    </div>
+    <p id="modalBody" class="hint"></p>
+    <div id="modalGrid" class="gallery small"></div>
+    <div class="sheet-foot">
+      <button id="modalSkip" class="ghost">Not now</button>
+      <button id="modalGet" class="primary">Download these&#8230;</button>
+    </div>
+  </div>
+</div>
+
+<!-- advisory call -->
+<div id="askModal" class="modal hidden">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h3>Advise</h3>
+      <button id="askClose" class="ghost small">close</button>
+    </div>
+    <p class="hint">Ask a larger model through OpenRouter, using the same key. It answers here.</p>
+    <label>Question <textarea id="askQ" rows="3" spellcheck="false"></textarea></label>
+    <label>Context, optional <textarea id="askCtx" rows="3" spellcheck="false"></textarea></label>
+    <div class="sheet-foot">
+      <button id="askGo" class="primary">Ask</button>
+    </div>
+    <pre id="askOut" class="fine" style="white-space:pre-wrap;margin-top:12px"></pre>
+  </div>
+</div>
+
+<!-- settings -->
+<div id="settings" class="modal hidden">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h3>Settings &#8212; OpenRouter</h3>
+      <button id="setClose" class="ghost small">close</button>
+    </div>
+    <p class="fine" id="orState">&#8212;</p>
+    <label>API key
+      <input id="orKey" type="password" placeholder="sk-or-v1-..." autocomplete="off" spellcheck="false">
+    </label>
+    <p class="fine">
+      The key goes straight to this app's Rust core and into the OS credential store
+      (Windows Credential Manager / macOS Keychain / Secret Service). It is never written to a file,
+      never logged, and never returned to this window. The strongest path is to set
+      <b>OPENROUTER_API_KEY</b> in the environment and leave this field empty &#8212; that route
+      never touches the UI at all.
+    </p>
+    <div class="row" style="margin-top:8px">
+      <button id="orSave" class="secondary">Save key</button>
+      <button id="orVerify" class="ghost small">Verify</button>
+      <button id="orClear" class="ghost small">Forget key</button>
+    </div>
+    <label>Default model <select id="orModel"></select></label>
+    <p class="fine">The model list is fetched live from openrouter.ai (public endpoint, no key needed).</p>
+    <div class="sheet-foot">
+      <button id="setDone" class="primary">Done</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts" class="toasts"></div>
+<script src="app.js"></script>
+</body>
+</html>

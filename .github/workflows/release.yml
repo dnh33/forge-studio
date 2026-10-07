@@ -1,0 +1,73 @@
+name: release
+# Builds the desktop installers on GitHub runners, so no Rust toolchain is needed
+# on anyone's machine. Releases are created as DRAFTS — nothing goes live by accident.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: "Create the release as a draft"
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ""
+          - platform: macos-latest
+            args: "--target aarch64-apple-darwin"
+          - platform: macos-latest
+            args: "--target x86_64-apple-darwin"
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: app
+        run: npm ci || npm install
+
+      - name: Build and attach to a release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: app
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', '0.1.0') }}
+          releaseName: "Forge Studio ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}"
+          releaseBody: |
+            Desktop studio for the forge-render pipeline.
+
+            Compose prompt sets, dispatch the GitHub render pipeline, watch the run live,
+            preview the result and download it. The OpenRouter key lives in your OS
+            credential store, never in a file and never in the app's UI state.
+
+            Built on GitHub's own runners — no local toolchain required.
+          releaseDraft: ${{ github.event.inputs.draft != 'false' }}
+          prerelease: false
+          args: ${{ matrix.args }}
