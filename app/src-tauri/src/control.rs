@@ -29,6 +29,33 @@ fn app_dir() -> PathBuf {
     dir
 }
 
+/// Diagnostics go to a file as well as to stderr. The Windows release build is a
+/// GUI binary with no console attached, so a control-plane failure there would
+/// otherwise leave no trace at all.
+fn log_line(msg: &str) {
+    eprintln!("{msg}");
+    let path = app_dir().join("control.log");
+    // A long-lived daemon must not grow this file without bound.
+    if std::fs::metadata(&path)
+        .map(|m| m.len() > 1_000_000)
+        .unwrap_or(false)
+    {
+        let _ = std::fs::remove_file(&path);
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        use std::io::Write;
+        let _ = writeln!(f, "{stamp} {msg}");
+    }
+}
+
 /// Process-local randomness is enough here: the token only has to be unguessable
 /// by something else on the loopback interface.
 fn random_token() -> String {
@@ -357,7 +384,9 @@ pub fn descriptor_path() -> Option<String> {
 /// and no network involved.
 pub fn serve(server: Server, tok: &str) {
     let real_port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(0);
-    eprintln!("forge-studio control plane listening on http://127.0.0.1:{real_port}");
+    log_line(&format!(
+        "forge-studio control plane listening on http://127.0.0.1:{real_port}"
+    ));
     for mut request in server.incoming_requests() {
         let method = request.method().clone();
         let url = request.url().to_string();
@@ -384,7 +413,7 @@ pub fn start() {
         .map(|v| v.eq_ignore_ascii_case("off"))
         .unwrap_or(false)
     {
-        eprintln!("forge-studio control plane disabled (FORGE_CONTROL=off)");
+        log_line("forge-studio control plane disabled (FORGE_CONTROL=off)");
         return;
     }
     let port: u16 = std::env::var("FORGE_CONTROL_PORT")
@@ -398,7 +427,9 @@ pub fn start() {
         let server = match Server::http(&addr) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("forge-studio control plane could not bind {addr}: {e}");
+                log_line(&format!(
+                    "forge-studio control plane could not bind {addr}: {e}"
+                ));
                 return;
             }
         };
@@ -415,10 +446,10 @@ pub fn start() {
         });
         let _ = std::fs::write(dir.join("control.json"), descriptor.to_string());
         let _ = std::fs::write(dir.join("control-token"), &tok);
-        eprintln!(
+        log_line(&format!(
             "forge-studio control plane listening on http://127.0.0.1:{real_port} (token in {})",
             dir.join("control.json").display()
-        );
+        ));
         serve(server, &tok);
     });
 }
