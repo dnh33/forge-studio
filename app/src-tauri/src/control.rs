@@ -402,8 +402,8 @@ pub fn start() {
         .unwrap_or(DEFAULT_PORT);
 
     std::thread::spawn(move || {
-        let addr = std::env::var("FORGE_CONTROL_ADDR")
-            .unwrap_or_else(|_| format!("127.0.0.1:{port}"));
+        let addr =
+            std::env::var("FORGE_CONTROL_ADDR").unwrap_or_else(|_| format!("127.0.0.1:{port}"));
         let server = match Server::http(&addr) {
             Ok(s) => s,
             Err(e) => {
@@ -444,16 +444,18 @@ mod tests {
     /// no network and no credentials.
     fn test_server() -> u16 {
         let server = Server::http("127.0.0.1:0").expect("bind ephemeral port");
-        let port = server
-            .server_addr()
-            .to_ip()
-            .expect("tcp addr")
-            .port();
+        let port = server.server_addr().to_ip().expect("tcp addr").port();
         std::thread::spawn(move || serve(server, TOK));
         port
     }
 
-    fn request(port: u16, method: &str, path: &str, token: Option<&str>, body: &str) -> (u16, String) {
+    fn request(
+        port: u16,
+        method: &str,
+        path: &str,
+        token: Option<&str>,
+        body: &str,
+    ) -> (u16, String) {
         let mut sock = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
         let auth = match token {
             Some(t) => format!("Authorization: Bearer {t}\r\n"),
@@ -480,7 +482,10 @@ mod tests {
     fn a_request_with_no_token_is_refused() {
         let port = test_server();
         let (code, _) = request(port, "GET", "/", None, "");
-        assert_eq!(code, 401, "the control plane must not answer unauthenticated callers");
+        assert_eq!(
+            code, 401,
+            "the control plane must not answer unauthenticated callers"
+        );
     }
 
     #[test]
@@ -496,7 +501,10 @@ mod tests {
         let (code, body) = request(port, "GET", "/", Some(TOK), "");
         assert_eq!(code, 200);
         assert!(body.contains("forge-studio"), "body was: {body}");
-        assert!(body.contains("/dispatch"), "the contract must be discoverable");
+        assert!(
+            body.contains("/dispatch"),
+            "the contract must be discoverable"
+        );
     }
 
     #[test]
@@ -511,7 +519,10 @@ mod tests {
     fn malformed_json_is_rejected_before_any_work_happens() {
         let port = test_server();
         let (code, body) = request(port, "PUT", "/set/whatever", Some(TOK), "{ not json");
-        assert_eq!(code, 400, "a bad body must fail fast, not after a network round trip");
+        assert_eq!(
+            code, 400,
+            "a bad body must fail fast, not after a network round trip"
+        );
         assert!(body.contains("bad JSON"), "body was: {body}");
     }
 
@@ -537,6 +548,9 @@ mod tests {
         let d = describe(7317);
         assert_eq!(d["name"], "forge-studio");
         assert_eq!(d["port"].as_u64(), Some(7317));
-        assert!(d["endpoints"].as_array().map(|a| !a.is_empty()).unwrap_or(false));
+        assert!(d["endpoints"]
+            .as_array()
+            .map(|a| !a.is_empty())
+            .unwrap_or(false));
     }
 }
