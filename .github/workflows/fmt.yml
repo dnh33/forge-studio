@@ -1,0 +1,28 @@
+name: fmt
+# Maintenance helper: produce rustfmt-canonical sources on a runner and upload them,
+# so a machine with no Rust toolchain can still satisfy the `cargo fmt --check` gate.
+# Run it with: gh workflow run fmt.yml -R dnh33/forge-studio
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: cargo fmt
+        working-directory: app/src-tauri
+        run: cargo fmt
+      - name: Show what changed
+        run: git --no-pager diff --stat
+      - uses: actions/upload-artifact@v4
+        with:
+          name: formatted-src
+          path: app/src-tauri/src
+          retention-days: 3

@@ -16,20 +16,41 @@ const RAW: &str = "https://raw.githubusercontent.com";
 
 // ---------------------------------------------------------------- auth
 
-/// Resolve a token: explicit env override first, then the gh CLI.
+/// The token is resolved once and reused. Resolving it spawns the `gh` CLI, and
+/// on Windows that would flash a console window on every poll without the
+/// CREATE_NO_WINDOW flag below.
+static TOKEN: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Resolve a token: explicit env override first, then the gh CLI. Cached after
+/// the first successful resolve.
 pub fn token() -> Result<String, String> {
+    if let Some(t) = TOKEN.get() {
+        return Ok(t.clone());
+    }
+    let t = resolve_token()?;
+    let _ = TOKEN.set(t.clone());
+    Ok(t)
+}
+
+fn resolve_token() -> Result<String, String> {
     if let Ok(t) = std::env::var("FORGE_GH_TOKEN") {
         let t = t.trim().to_string();
         if !t.is_empty() {
             return Ok(t);
         }
     }
-    let out = std::process::Command::new("gh")
-        .args(["auth", "token", "--hostname", "github.com"])
-        .output()
-        .map_err(|e| {
-            format!("GitHub CLI not found ({e}). Install `gh`, then run `gh auth login`.")
-        })?;
+    let mut cmd = std::process::Command::new("gh");
+    cmd.args(["auth", "token", "--hostname", "github.com"]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW: a GUI app must not flash a console for every child process.
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let out = cmd.output().map_err(|e| {
+        format!("GitHub CLI not found ({e}). Install `gh`, then run `gh auth login`.")
+    })?;
     if !out.status.success() {
         return Err(
             "Not logged in to GitHub. Run `gh auth login` in a terminal, then reopen the studio."

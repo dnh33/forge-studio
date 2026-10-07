@@ -5,6 +5,7 @@
 //! list the renders and download them. Nothing is cached locally that the
 //! repository does not already hold.
 
+mod control;
 mod github;
 mod openrouter;
 
@@ -140,6 +141,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|_app| {
+            // Full agent control over loopback HTTP. Local-only, token-gated.
+            crate::control::start();
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             gh_identity,
             list_sets,
