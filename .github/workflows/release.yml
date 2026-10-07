@@ -61,7 +61,7 @@ jobs:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', '0.1.0') }}
           releaseName: "Forge Studio ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}"
           releaseBody: |
-            Desktop studio for the forge-render pipeline.
+            Desktop studio for the forge-images pipeline.
 
             Compose prompt sets, dispatch the GitHub render pipeline, watch the run live,
             preview the result and download it. The OpenRouter key lives in your OS

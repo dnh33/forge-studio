@@ -1,4 +1,4 @@
-//! GitHub API access for the forge-render pipeline.
+//! GitHub API access for the forge-images pipeline.
 //!
 //! Auth is deliberately boring: the app reuses the GitHub CLI the developer
 //! already has logged in. `gh auth token` prints the token; nothing is stored
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 pub const OWNER: &str = "dnh33";
-pub const REPO: &str = "forge-render";
+pub const REPO: &str = "forge-images";
 pub const WORKFLOW: &str = "render.yml";
 pub const RENDERS_BRANCH: &str = "renders";
 const API: &str = "https://api.github.com";

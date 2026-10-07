@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/dnh33/forge-studio/releases"><img alt="Download" src="https://img.shields.io/badge/download-latest%20release-c9a227?style=flat-square"></a>
-  <a href="https://github.com/dnh33/forge-render"><img alt="Pipeline" src="https://img.shields.io/badge/pipeline-forge--render-7a1f1f?style=flat-square"></a>
+  <a href="https://github.com/dnh33/forge-images"><img alt="Pipeline" src="https://img.shields.io/badge/pipeline-forge--images-7a1f1f?style=flat-square"></a>
   <img alt="Licence" src="https://img.shields.io/badge/licence-MIT-4a3327?style=flat-square">
 </p>
 
@@ -21,7 +21,7 @@ Three repositories, one idea: **rendering should cost nothing and live on your m
 
 | | |
 |---|---|
-| **[forge-render](https://github.com/dnh33/forge-render)** | the image pipeline — prompt sets in, contact sheets out, rendered on GitHub's free public runners |
+| **[forge-images](https://github.com/dnh33/forge-images)** | the image pipeline — prompt sets in, contact sheets out, rendered on GitHub's free public runners |
 | **[forge-motion](https://github.com/dnh33/forge-motion)** | the motion pipeline — the same shape, for short video |
 | **forge-studio** | this app — the desktop face of both |
 

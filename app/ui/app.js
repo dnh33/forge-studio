@@ -5,7 +5,7 @@
 const { invoke } = window.__TAURI__.core;
 const opener = window.__TAURI__.opener;
 
-const OWNER = "dnh33", PIPELINE = "forge-render";
+const OWNER = "dnh33", PIPELINE = "forge-images";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 

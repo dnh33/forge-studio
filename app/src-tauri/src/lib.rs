@@ -1,4 +1,4 @@
-//! Forge Studio — the desktop studio for the forge-render pipeline.
+//! Forge Studio — the desktop studio for the forge-images pipeline.
 //!
 //! The whole backend is a thin, honest wrapper over the GitHub API: read prompt
 //! sets, write prompt sets, dispatch the render workflow, stream its status,
