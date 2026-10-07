@@ -14,7 +14,6 @@
 //!     the token and the pid, so a client can discover the endpoint without guessing.
 //!   * Set `FORGE_CONTROL=off` to disable the server entirely.
 
-use std::io::Read;
 use std::path::PathBuf;
 use tiny_http::{Header, Method, Response, Server, StatusCode};
 
@@ -93,7 +92,8 @@ fn err(request: tiny_http::Request, code: u16, msg: &str) {
 
 fn body_of(request: &mut tiny_http::Request) -> String {
     let mut s = String::new();
-    let _ = request.as_reader().read_to_string(&mut s);
+    let reader = request.as_reader();
+    let _ = std::io::Read::read_to_string(reader, &mut s);
     s
 }
 
@@ -101,9 +101,7 @@ fn authorised(request: &tiny_http::Request, expected: &str) -> bool {
     let mut presented = None;
     for h in request.headers() {
         let name = h.field.as_str().as_str().to_ascii_lowercase();
-        if name == "authorization" {
-            presented = Some(h.value.as_str().trim().to_string());
-        } else if name == "x-forge-token" {
+        if name == "authorization" || name == "x-forge-token" {
             presented = Some(h.value.as_str().trim().to_string());
         }
     }
