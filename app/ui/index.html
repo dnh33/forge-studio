@@ -162,7 +162,7 @@
 <div id="settings" class="modal hidden">
   <div class="sheet">
     <div class="sheet-head">
-      <h3>Settings &#8212; OpenRouter</h3>
+      <h3>Settings</h3>
       <button id="setClose" class="ghost small">close</button>
     </div>
     <p class="fine" id="orState">&#8212;</p>
@@ -173,7 +173,7 @@
       The key goes straight to this app's Rust core and into the OS credential store
       (Windows Credential Manager / macOS Keychain / Secret Service). It is never written to a file,
       never logged, and never returned to this window. The strongest path is to set
-      <b>OPENROUTER_API_KEY</b> in the environment and leave this field empty &#8212; that route
+      <b>OPENROUTER_API_KEY</b> in the environment and leave this field empty: that route
       never touches the UI at all.
     </p>
     <div class="row" style="margin-top:8px">
@@ -186,6 +186,15 @@
     <section class="ctl">
       <h3>Agent interface</h3>
       <p class="fine" id="ctlState">checking&#8230;</p>
+    </section>
+    <section class="ctl">
+      <h3>Updates</h3>
+      <p class="fine" id="updState">checking&#8230;</p>
+      <div class="row" style="margin-top:8px">
+        <button id="updCheck" class="ghost small">Check for updates</button>
+        <button id="updInstall" class="secondary hidden">Download and install</button>
+      </div>
+      <p class="fine">Every update is signed. The app checks the signature before it installs anything.</p>
     </section>
     <div class="sheet-foot">
       <button id="setDone" class="primary">Done</button>

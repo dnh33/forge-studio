@@ -33,8 +33,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "shortDescription": "Render images with the forge-render pipeline",
     "longDescription": "Compose prompt sets, dispatch the GitHub render pipeline, watch it live, preview the result and download it."
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRDRDQ5MDQzQUVBQkU3NjYKUldSbTU2dXVRNURVVE9YaDJoblM4Vk5BS1E5eDdjdmdlWHlHTEJ4NVRDcVg1bElhNjZObTVJbm8K",
+      "endpoints": [
+        "https://github.com/dnh33/forge-studio/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

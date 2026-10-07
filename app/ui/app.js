@@ -217,6 +217,7 @@ $("#gear").addEventListener("click", async () => {
   await loadOr();
   await loadOrModels();
   await loadControl();
+  await loadUpdate();
 });
 
 async function loadControl() {
@@ -235,6 +236,48 @@ async function loadControl() {
 }
 $("#setClose").addEventListener("click", () => $("#settings").classList.add("hidden"));
 $("#setDone").addEventListener("click", () => $("#settings").classList.add("hidden"));
+
+// ------------------------------------------------------------------- updates
+
+async function loadUpdate() {
+  const el = $("#updState");
+  if (!el) return;
+  el.textContent = "checking\u2026";
+  $("#updInstall").classList.add("hidden");
+  let r;
+  try {
+    r = await invoke("check_update");
+  } catch (e) {
+    el.textContent = "Could not reach the update service. " + (e && e.message ? e.message : e);
+    return;
+  }
+  if (r && r.available) {
+    el.innerHTML = "Version <b>" + esc(String(r.version)) + "</b> is available; you have "
+      + esc(String(r.current)) + ".";
+    $("#updInstall").classList.remove("hidden");
+  } else {
+    el.textContent = "Up to date (version " + ((r && r.current) || "?") + ").";
+  }
+}
+
+$("#updCheck").addEventListener("click", loadUpdate);
+
+$("#updInstall").addEventListener("click", async () => {
+  const btn = $("#updInstall");
+  const el = $("#updState");
+  btn.disabled = true;
+  el.textContent = "Downloading and verifying the signature\u2026";
+  try {
+    const msg = await invoke("install_update");
+    el.textContent = msg + ". Close and reopen Forge Studio to use it.";
+    toast("Update installed. Reopen the app to use it.", "ok");
+  } catch (e) {
+    el.textContent = "Update failed: " + (e && e.message ? e.message : e);
+    toast("Update failed.", "bad");
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 $("#orSave").addEventListener("click", async () => {
   const v = $("#orKey").value.trim();

@@ -141,11 +141,53 @@ fn control_descriptor() -> Option<String> {
     control::descriptor_path()
 }
 
+// -------------------------------------------------------------------- updater
+//
+// Driven from Rust rather than the plugin's JavaScript API, because this app has
+// no bundler: the frontend is plain files served from ../ui. The plugin still
+// does the work, so the download is signature-verified against the key baked in
+// at build time.
+
+#[tauri::command]
+async fn check_update(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    match updater.check().await.map_err(|e| e.to_string())? {
+        Some(u) => Ok(serde_json::json!({
+            "available": true,
+            "version": u.version.clone(),
+            "current": u.current_version.clone(),
+            "notes": u.body.clone(),
+        })),
+        None => Ok(serde_json::json!({
+            "available": false,
+            "current": env!("CARGO_PKG_VERSION"),
+        })),
+    }
+}
+
+/// Download and install the pending update. Returns only when it is installed;
+/// the caller is expected to relaunch afterwards.
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let Some(u) = updater.check().await.map_err(|e| e.to_string())? else {
+        return Ok("already current".to_string());
+    };
+    let version = u.version.clone();
+    u.download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!("installed {version}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|_app| {
             // Full agent control over loopback HTTP. Local-only, token-gated.
             crate::control::start();
@@ -173,6 +215,8 @@ pub fn run() {
             or_sharpen,
             or_advise,
             control_descriptor,
+            check_update,
+            install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Forge Studio");

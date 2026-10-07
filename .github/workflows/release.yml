@@ -56,8 +56,12 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: app
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.0.0-dev' }}
           releaseName: "Forge Studio ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}"
           releaseBody: |
