@@ -102,5 +102,10 @@ jobs:
           # The updater refuses a release whose signature does not match the
           # pubkey compiled into the app. Check that here, where the bundles
           # still exist, rather than discovering it on a user's machine.
-          python3 -m pip install --quiet cryptography
+          #
+          # --break-system-packages: macOS runners use Homebrew Python, which
+          # refuses a system-wide install with "externally-managed-environment"
+          # (PEP 668). Ubuntu and Windows do not care, and the flag is accepted
+          # everywhere, so this is the portable form.
+          python3 -m pip install --quiet --break-system-packages cryptography
           python3 scripts/verify_update.py app/src-tauri/target/release/bundle
