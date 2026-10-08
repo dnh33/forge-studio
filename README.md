@@ -36,6 +36,26 @@ The forge is not idle. The studio is its console.
 - **Preview, then take it.** When the run finishes, the images it produced appear in a sheet with a download offer. Pick a folder and they land there.
 - **Browse.** Everything ever published on the pipeline's `renders` branch, selectable, downloadable, openable in the browser.
 
+## Drive it from outside
+
+The app runs a small HTTP control plane on loopback and ships a Model Context Protocol server, so an agent can do
+everything the window can: read and write prompt sets, dispatch a run, follow it, list the renders, download them,
+and call the ideation models.
+
+```bash
+cat "$APPDATA/forge-studio/control.json"   # port, token, pid
+cd mcp && node forge-studio-mcp.mjs        # stdio MCP server
+```
+
+It binds `127.0.0.1` only, every request needs the bearer token from that descriptor file, and `FORGE_CONTROL=off`
+disables it entirely. The endpoints are described in [docs/CONTROL.md](docs/CONTROL.md).
+
+## Updates
+
+The app updates itself. Settings shows the build you are running, checks for a newer one, and installs it. Every
+update is signed and the signature is verified before anything is installed, so a tampered download is refused.
+Nothing is offered until a release has been published, because that is what the updater endpoint resolves to.
+
 ## Why it is free, and what it costs
 
 GitHub-hosted runners are free for public repositories, the image model is Apache-2.0, and the runtime is MIT. Nothing to buy, nothing to license.
@@ -74,6 +94,16 @@ npm run tauri build
 
 Requirements: Rust (stable) and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your platform.
 
+## Tests
+
+```bash
+cd app/src-tauri && cargo test     # the control plane, over a real socket
+cd mcp && node --test              # the MCP server, against a stub control plane
+```
+
+CI runs both on every push. The Rust tests start a real control plane on an ephemeral port and drive it over a real
+socket, so they cover the token gate and the error paths themselves rather than a mock of them.
+
 ## Layout
 
 ```
@@ -82,7 +112,10 @@ app/
   src-tauri/src/
     github.rs        GitHub API: sets, dispatch, runs, renders, downloads
     openrouter.rs    ideation, and the only place the key is ever handled
+    control.rs       the loopback control plane, and its tests
     lib.rs           the command surface the UI talks to
+mcp/                 the stdio MCP server, and its tests
+docs/CONTROL.md      the control-plane contract
 site/                the landing page, deployed by CI
   assets/            wordmark.svg, favicon.svg, og.svg, og.png
 ```
