@@ -45,6 +45,18 @@ ships an MCP server on top of it, so an agent can do everything the window can.
    Cloud CI is the default and local GPU work is never run unprompted.
 9. **A claim needs evidence, and a number needs computing.** Never quote a figure
    that was not measured, and when something is verified say by what.
+10. **Write tests only where failure is costly.** Not coverage for its own sake. A
+    test earns its place by encoding a real requirement or guarding an invariant
+    whose breach would hurt, and by being a feedback loop someone actually trusts.
+    This repository's keepers are the ones that caught real bugs: previews never
+    publish, the `only` filter must not drop ad-hoc items, a path must not escape a
+    route, the token must not follow a redirect, the decision vocabulary is closed,
+    and JS/Rust IPC argument names must agree.
+
+    The failure mode to refuse: an agent writing tests that restate its own
+    implementation, then treating "my tests pass" as completion. That proves nothing
+    about the requirement, because the same mind wrote both sides. Tests written
+    after the fact to reach a number are the same mistake wearing a green tick.
 
 ## Commands
 

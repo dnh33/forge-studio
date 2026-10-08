@@ -114,3 +114,9 @@ is the default. See `forge-motion`.
 4. ADR-0003: implement onboarding (create-from-template) and the actor gate.
 5. Ask Danie the visibility question directly: public and free, or private and
    metered.
+6. **Audit the test suites against the "only where failure is costly" rule.** Some
+   suites were written after the fact to reach a count, which is exactly the habit
+   that rule forbids. Keep the guards that caught real bugs (preview publish
+   exclusion, the `only` filter, path escapes, the redirect token, the decision
+   vocabulary, IPC naming); propose dropping the ones that only restate
+   implementation. Ask before deleting anything.
