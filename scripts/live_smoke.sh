@@ -7,9 +7,20 @@
 # server over stdio.
 #
 # Usage: live_smoke.sh <installer.exe> [run_id_for_outputs] [preview_run_id]
+#    or: live_smoke.sh --engine <forge-studio.exe> [run_id_for_outputs] [preview_run_id]
+#
+# --engine drives a built binary in --headless mode instead of installing
+# anything: the engine the split produces is exactly what this suite must
+# prove. Every check after the launch is identical in both modes.
 set -uo pipefail
 
-INSTALLER="$1"
+MODE="${1:-}"
+ENGINE_EXE=""
+if [ "$MODE" = "--engine" ]; then
+  ENGINE_EXE="${2:?usage: live_smoke.sh --engine <forge-studio.exe> [run_id] [preview_run_id]}"
+  shift 2
+fi
+INSTALLER="${1:-}"
 RUN_ID="${2:-}"
 PREVIEW_RUN_ID="${3:-}"
 BASE="http://127.0.0.1:7317"
@@ -26,6 +37,15 @@ check() { # check <name> <expected-substring> <actual>
 }
 
 say "install silently"
+if [ -n "$ENGINE_EXE" ]; then
+  say "engine mode: no install, launching $ENGINE_EXE --headless"
+  if [ ! -f "$ENGINE_EXE" ]; then echo "engine exe not found: $ENGINE_EXE"; exit 2; fi
+  # Delete a stale descriptor so the checks below prove THIS engine wrote it.
+  rm -f "$APPDATA/forge-studio/control.json"
+  "$ENGINE_EXE" --headless >/dev/null 2>&1 &
+  sleep 6
+  EXE="$ENGINE_EXE"
+else
 if [ ! -f "$INSTALLER" ]; then echo "installer not found: $INSTALLER"; exit 2; fi
 "$INSTALLER" /S
 sleep 8
@@ -41,10 +61,15 @@ fi
 if [ -z "$EXE" ] || [ ! -f "$EXE" ]; then echo "forge-studio.exe not found (registry said: '$LOC')"; exit 2; fi
 echo "  installed: $EXE"
 echo "  registered version: $(powershell -nop -c "(Get-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'Forge Studio' | Select-Object -First 1).DisplayVersion" 2>/dev/null | tr -d '\r')"
+fi
 
 say "launch (a GUI app, so it must be started detached)"
-"$EXE" >/dev/null 2>&1 &
-sleep 6
+if [ -z "$ENGINE_EXE" ]; then
+  "$EXE" >/dev/null 2>&1 &
+  sleep 6
+else
+  echo "  skipped: the engine is already up from the launch above"
+fi
 
 DESC="$APPDATA/forge-studio/control.json"
 if [ ! -f "$DESC" ]; then echo "no control descriptor at $DESC"; exit 2; fi
