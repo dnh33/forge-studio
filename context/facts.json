@@ -1,0 +1,61 @@
+{
+  "_comment": "Machine-readable facts for the forge ecosystem. English, stable keys, no prose. Update when the truth changes; if this disagrees with docs/STATE.md, this file is stale.",
+  "as_of": "2026-10-08",
+  "repos": {
+    "studio": { "full_name": "dnh33/forge-studio", "visibility": "public", "path_on_pc": "D:/bots/forge-studio" },
+    "images": { "full_name": "dnh33/forge-images", "visibility": "public", "path_on_pc": "D:/bots/forge-images", "publish_branch": "renders" },
+    "motion": { "full_name": "dnh33/forge-motion", "visibility": "public", "path_on_pc": "D:/bots/forge-motion", "status": "experimental" }
+  },
+  "versions": {
+    "published": "0.2.0",
+    "current": "0.3.1",
+    "installed_on_pc": {
+      "version": "0.3.0",
+      "path": "E:/Forge Studio/forge-studio.exe",
+      "built_from_commit": "57ddb9e",
+      "note": "predates the preview reader; superseded by 0.3.1"
+    },
+    "rule": "a version identifies its content; never move a tag anyone has installed, bump instead"
+  },
+  "app": {
+    "control_plane": { "host": "127.0.0.1", "port": 7317, "auth": "bearer token", "descriptor": "%APPDATA%/forge-studio/control.json" },
+    "commands": 26,
+    "updater": "tauri-plugin-updater, minisign Ed25519, current flow is a manual check",
+    "install_scope": "per-user, no elevation"
+  },
+  "pipeline": {
+    "default_model": "FLUX.1-schnell Q4_K_S",
+    "runner": "ubuntu-latest, 4 vCPU, 16 GB RAM",
+    "backend": "stable-diffusion.cpp",
+    "caps": { "max_per_shard": 6, "max_steps": 50 },
+    "measured_seconds": { "full_render_768x1024_4step": 2699, "preview_192x256_2step": 220, "z_image_turbo_768x1024_8step": 4689 },
+    "preview_publishes": false
+  },
+  "ledger": {
+    "verdicts": ["keep", "reject", "undecided"],
+    "reasons": ["muddy", "off-style", "wrong-subject", "wrong-composition", "artifacts", "duplicate", "close-but-off"],
+    "note_max_chars": 200,
+    "path": "renders/<set>/<image>.decision.json",
+    "validation": "pure function validate_decision, runs before any token or network call"
+  },
+  "gates": {
+    "rust": ["cargo fmt --check", "cargo clippy --all-targets -- -D warnings", "cargo test"],
+    "local_toolchain": "none; this PC has no Rust, use .github/workflows/fmt.yml for canonical sources",
+    "test_counts": { "forge-images": 59, "forge-studio_rust": 8, "forge-studio_mcp": 12, "forge-studio_python": 14, "forge-motion": 34 }
+  },
+  "decisions": {
+    "adr_0001": { "title": "engine/UI split", "status": "approved", "date": "2026-10-08" },
+    "adr_0002": { "title": "installer smoke test in CI", "status": "approved", "date": "2026-10-08" },
+    "adr_0003": { "title": "one-click onboarding and the account lock", "status": "approved-direction", "date": "2026-10-08" }
+  },
+  "open_questions": [
+    "public and free, or private and metered (public exposes prompts and renders)",
+    "cloudflare for the site (Pages) or for a Worker",
+    "actor gate: hard refusal or loud warning"
+  ],
+  "standing_constraints": [
+    "local GPU rendering is experimental: it saturated 15.9 of 16.3 GB and froze the desktop; cloud CI is the default and local GPU is never run unprompted",
+    "secrets live in the OS keyring or the environment, never in the webview, a repo file, or localStorage",
+    "the render repo is public: prompts, renders and run logs are world-readable"
+  ]
+}

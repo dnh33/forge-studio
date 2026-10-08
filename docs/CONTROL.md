@@ -44,6 +44,9 @@ curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7317/status
 | GET | `/run/<id>` | | one run with its jobs |
 | GET | `/run/<id>/outputs` | | exactly the images that run published |
 | GET | `/renders` | | everything on the `renders` branch |
+| GET | `/run/<id>/previews` | | a preview run's images, as data URLs |
+| GET | `/decisions/<set>` | | every recorded verdict for a set, keyed by path |
+| POST | `/decision` | `{set,file,verdict,reason,note}` | `{saved: <commit sha>}` |
 | POST | `/download` | `{urls:[...], dir:"C:/path"}` | `{saved:[...], failed:[...]}` |
 | POST | `/ideate` | `{brief, model, count}` | `{set: "<json>"}` |
 | POST | `/advise` | `{question, context, model}` | `{answer}` |
@@ -71,7 +74,19 @@ mcp:
 
 Tools exposed: `studio_status`, `list_sets`, `get_set`, `save_set`,
 `dispatch_render`, `list_runs`, `get_run`, `run_outputs`, `list_renders`,
-`download_images`, `ideate`, `advise`.
+`list_decisions`, `save_decision`, `run_previews`, `download_images`, `ideate`,
+`advise`.
+
+Two of these are worth explaining, because they are the only way to reach their
+data:
+
+- **`run_previews`** — a preview is never published to the `renders` branch, so its
+  images exist only as run artifacts. This downloads the artifact zip and returns
+  the images as data URLs. It resolves GitHub's redirect to the storage host by
+  hand, so the bearer token is never sent there.
+- **`save_decision`** — appends to the triage ledger. The verdict and the reason are
+  closed sets, and validation runs before any token or network call, so a bad value
+  is refused rather than committed.
 
 ## 3. Why loopback and a token
 
