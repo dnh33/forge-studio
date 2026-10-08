@@ -320,9 +320,11 @@ fn plain_name(value: &str, what: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Write `renders/<set>/<image>.decision.json` on the renders branch, beside the
-/// image and its sidecar, so the verdict is git-versioned with the render.
-pub async fn save_decision(d: Decision) -> Result<String, String> {
+/// Everything that can be rejected about a decision, with no token, no network,
+/// and no clock. Kept separate so the rules are testable in isolation: a test
+/// that called `save_decision` itself could reach `gh auth token` on a runner
+/// where gh is installed and write to the repository by accident.
+pub fn validate_decision(d: &Decision) -> Result<(), String> {
     plain_name(&d.set, "set")?;
     plain_name(&d.file, "file")?;
     if !VERDICTS.contains(&d.verdict.as_str()) {
@@ -333,11 +335,21 @@ pub async fn save_decision(d: Decision) -> Result<String, String> {
             return Err(format!("reason must be one of {REASONS:?}, got {r:?}"));
         }
     }
-    let note = d.note.unwrap_or_default();
+    let note = d.note.clone().unwrap_or_default();
     let note = note.trim();
     if note.chars().count() > NOTE_MAX {
         return Err(format!("note is limited to {NOTE_MAX} characters"));
     }
+    Ok(())
+}
+
+/// Write `renders/<set>/<image>.decision.json` on the renders branch, beside the
+/// image and its sidecar, so the verdict is git-versioned with the render.
+pub async fn save_decision(d: Decision) -> Result<String, String> {
+    validate_decision(&d)?;
+
+    let note = d.note.unwrap_or_default();
+    let note = note.trim();
 
     let stem = d.file.trim_end_matches(".png").trim_end_matches(".jpg");
     let path = format!("renders/{}/{stem}.decision.json", d.set);
@@ -557,7 +569,7 @@ mod decision_tests {
     fn an_unknown_verdict_is_refused() {
         let mut d = base();
         d.verdict = "brilliant".into();
-        let e = save_decision_blocking(d).unwrap_err();
+        let e = validate_decision(&d).unwrap_err();
         assert!(e.contains("verdict"), "{e}");
     }
 
@@ -566,22 +578,26 @@ mod decision_tests {
         let mut d = base();
         d.verdict = "reject".into();
         d.reason = Some("meh".into());
-        let e = save_decision_blocking(d).unwrap_err();
+        let e = validate_decision(&d).unwrap_err();
         assert!(e.contains("reason"), "{e}");
     }
 
     #[test]
-    fn every_documented_reason_is_accepted_by_validation() {
+    fn every_documented_reason_is_accepted() {
         for r in REASONS {
             let mut d = base();
             d.verdict = "reject".into();
             d.reason = Some(r.to_string());
-            // A valid record gets past validation and only then needs a token.
-            let e = save_decision_blocking(d).unwrap_err();
-            assert!(
-                !e.contains("reason") && !e.contains("verdict") && !e.contains("plain name"),
-                "reason {r} was rejected by validation: {e}"
-            );
+            validate_decision(&d).unwrap_or_else(|e| panic!("reason {r} was rejected: {e}"));
+        }
+    }
+
+    #[test]
+    fn an_undecided_or_kept_verdict_needs_no_reason() {
+        for v in VERDICTS {
+            let mut d = base();
+            d.verdict = v.into();
+            validate_decision(&d).unwrap_or_else(|e| panic!("verdict {v} was rejected: {e}"));
         }
     }
 
@@ -589,7 +605,7 @@ mod decision_tests {
     fn an_overlong_note_is_refused() {
         let mut d = base();
         d.note = Some("x".repeat(NOTE_MAX + 1));
-        let e = save_decision_blocking(d).unwrap_err();
+        let e = validate_decision(&d).unwrap_err();
         assert!(e.contains("note"), "{e}");
     }
 
@@ -597,8 +613,15 @@ mod decision_tests {
     fn a_note_at_the_limit_is_accepted() {
         let mut d = base();
         d.note = Some("x".repeat(NOTE_MAX));
-        let e = save_decision_blocking(d).unwrap_err();
-        assert!(!e.contains("note"), "{e}");
+        validate_decision(&d).expect("a note at the limit is allowed");
+    }
+
+    #[test]
+    fn a_note_is_measured_in_characters_not_bytes() {
+        let mut d = base();
+        // 200 multi-byte characters are 600 bytes but still within the limit.
+        d.note = Some("ø".repeat(NOTE_MAX));
+        validate_decision(&d).expect("a 200-character note is allowed whatever its byte length");
     }
 
     #[test]
@@ -606,22 +629,12 @@ mod decision_tests {
         for bad in ["../etc", "a/b", "a\\b", ""] {
             let mut d = base();
             d.set = bad.into();
-            assert!(save_decision_blocking(d).unwrap_err().contains("plain name"));
+            assert!(validate_decision(&d).unwrap_err().contains("plain name"));
 
             let mut d = base();
             d.file = bad.into();
-            assert!(save_decision_blocking(d).unwrap_err().contains("plain name"));
+            assert!(validate_decision(&d).unwrap_err().contains("plain name"));
         }
-    }
-
-    /// save_decision is async and needs a runtime; the validation it performs is
-    /// pure, so drive it through a minimal current-thread runtime.
-    fn save_decision_blocking(d: Decision) -> Result<String, String> {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("runtime");
-        rt.block_on(save_decision(d))
     }
 }
 
