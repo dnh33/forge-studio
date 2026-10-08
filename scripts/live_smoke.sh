@@ -30,11 +30,17 @@ if [ ! -f "$INSTALLER" ]; then echo "installer not found: $INSTALLER"; exit 2; f
 "$INSTALLER" /S
 sleep 8
 
-# Tauri's NSIS puts the binary under %LOCALAPPDATA%\<productName>. Find it rather
-# than assume the directory name.
-EXE=$(find "$LOCALAPPDATA" -maxdepth 2 -name "forge-studio.exe" 2>/dev/null | head -1)
-if [ -z "$EXE" ]; then echo "forge-studio.exe not found under LOCALAPPDATA"; exit 2; fi
+# Find the installed binary. Do NOT assume %LOCALAPPDATA%\<productName>: this
+# install lives on E:, and a silent install goes wherever the user last put it.
+# The registry is the only thing that knows, and it returns the path quoted.
+LOC=$(powershell -nop -c "(Get-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*, HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'Forge Studio' | Select-Object -First 1).InstallLocation" 2>/dev/null | tr -d '\r"')
+EXE="$LOC/forge-studio.exe"
+if [ ! -f "$EXE" ]; then
+  EXE=$(find "$LOCALAPPDATA" -maxdepth 2 -name "forge-studio.exe" 2>/dev/null | head -1)
+fi
+if [ -z "$EXE" ] || [ ! -f "$EXE" ]; then echo "forge-studio.exe not found (registry said: '$LOC')"; exit 2; fi
 echo "  installed: $EXE"
+echo "  registered version: $(powershell -nop -c "(Get-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'Forge Studio' | Select-Object -First 1).DisplayVersion" 2>/dev/null | tr -d '\r')"
 
 say "launch (a GUI app, so it must be started detached)"
 "$EXE" >/dev/null 2>&1 &
@@ -54,10 +60,13 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -m 20 "$BASE/status")
 check "no token is refused" "401" "$code"
 
 say "the read endpoints"
-check "status"        '"ok"\|"version"\|"repo"' "$(api "$BASE/status")"
-check "sets"          '\[|portraits'            "$(api "$BASE/sets")"
-check "renders"       '\[|portraits'            "$(api "$BASE/renders")"
-check "runs"          '\[|display_title\|status' "$(api "$BASE/runs")"
+# Assert on strings the handlers ACTUALLY return. Run curl by hand first if
+# unsure: a smoke test asserting a shape that does not exist fails for its own
+# reason and buries the app's real state.
+check "status (signed-in user)" '"github"' "$(api "$BASE/status")"
+check "sets"                    '"slug"'   "$(api "$BASE/sets")"
+check "renders"                 '"file"'   "$(api "$BASE/renders")"
+check "runs"                    '\['        "$(api "$BASE/runs")"
 
 if [ -n "$RUN_ID" ]; then
   say "run $RUN_ID (a published render)"
@@ -79,7 +88,8 @@ check "a path is refused" 'plain name' \
   "$(api -X POST -H 'Content-Type: application/json' -d '{"set":"../etc","file":"p.png","verdict":"keep"}' "$BASE/decision")"
 
 say "the agent interface describes itself"
-check "describe lists the new routes" '/decisions\|/previews' "$(api "$BASE/")"
+check "describe lists the new routes" '/decisions' "$(api "$BASE/")"
+check "describe lists the preview route" '/previews' "$(api "$BASE/")"
 
 printf '\n=== %d ok, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

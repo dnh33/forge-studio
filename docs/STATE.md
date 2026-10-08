@@ -99,9 +99,39 @@ is the default. See `forge-motion`.
 
 ## In flight at the time of writing
 
-- The `v0.3.1` release build (all three platforms).
+- ~~The `v0.3.1` release build~~ — **done**: all three platforms green, 11 assets,
+  each platform reporting its own signature count (`2/2`, `1/1`, `1/1`).
 - Render run `37770433177` — Danie's own dispatch, six shards, publishing to `renders`.
-- The live smoke test of `0.3.1` on this PC, once the build lands.
+- ~~The live smoke test of `0.3.1`~~ — **done, see below**.
+
+## Verified live, 2026-10-08 (not asserted — driven)
+
+`scripts/live_smoke.sh` against the installed build: **12 ok, 0 failed**.
+
+| what | result |
+|---|---|
+| installer runs silently, registry reads back | `0.3.1` |
+| control plane starts, descriptor written | port 7317 |
+| **auth is enforced** (no token) | 401 |
+| `/status`, `/sets`, `/renders`, `/runs` | real content |
+| **`/run/<id>/previews` against a real preview run** | `data:image/png;base64,` returned |
+| a bad run id, a bad verdict, a bad reason, a path | each refused readably |
+| discovery lists the new routes | yes |
+
+`scripts/mcp_live_smoke.mjs` through the real MCP server over stdio against the
+running app: **6 ok, 0 failed** — including `list_decisions` reading the real ledger
+and `run_previews` returning real data URLs.
+
+Not covered: `ideate` and `advise`. `/status` reports `"openrouter": {"configured":
+false}`, so there is no key to test with. Do not claim those are verified.
+
+Two lessons from writing these, both mine rather than the app's:
+
+- The first run reported 3 failures that were **my script's own assertions** — a `|`
+  inside a BRE pattern is a literal, and I asserted a `/status` shape that does not
+  exist. Assert on strings the handler actually returns, checked in the source first.
+- The script assumed `%LOCALAPPDATA%\<productName>`. This install is on `E:`, so it
+  finds the binary through the registry, which is the only thing that knows.
 
 ## Next actions
 
