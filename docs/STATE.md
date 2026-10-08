@@ -139,7 +139,8 @@ Two lessons from writing these, both mine rather than the app's:
    signature counts, put `Forge.Studio_0.3.1_x64-setup.exe` on the Desktop, and run
    `scripts/live_smoke.sh` with the preview run id `37768167306` and the published run
    id once Danie's render lands.
-2. ADR-0002: add the installer smoke job to `release.yml` (`windows-latest`).
+2. ~~ADR-0002: add the installer smoke job to `release.yml`~~ — **done**
+   (`scripts/verify_installer.sh` + the `installer` job, verified both ways locally).
 3. ADR-0001: write the engine/UI split spec before writing the code.
 4. ADR-0003: implement onboarding (create-from-template) and the actor gate.
 5. Ask Danie the visibility question directly: public and free, or private and
