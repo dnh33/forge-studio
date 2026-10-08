@@ -58,6 +58,7 @@ jobs:
 
       - name: The tag must match the app version
         working-directory: app
+        shell: bash
         env:
           REQUESTED: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
