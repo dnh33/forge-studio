@@ -701,18 +701,6 @@ pub fn run_engine() -> Engine {
     }
 }
 
-/// The GUI hook: put the engine behind the window, out of its way. Never fails
-/// the app; a failure to serve is logged and the window still opens.
-///
-/// The window now reaches `run_engine` directly, inside the Tauri setup, so an
-/// adoption or a bind has finished before the first webview opens. This
-/// function remains for callers outside the Tauri lifecycle.
-pub fn start() {
-    std::thread::spawn(|| {
-        let _ = run_engine();
-    });
-}
-
 /// The engine, with no window and no webview: start it and stay alive for the
 /// life of the process. If the server is taken from us or dies, watch the port
 /// and take it back when it goes quiet, so a headless engine does not quietly
