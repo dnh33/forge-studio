@@ -629,7 +629,12 @@ fn bind_desired(port: u16) -> Result<(Server, u16), Box<dyn std::error::Error>> 
             log_line(&format!(
                 "forge-studio engine could not bind 127.0.0.1:{port} ({e}); trying an ephemeral port"
             ));
-            let s = Server::http("127.0.0.1:0")?;
+            let s = match Server::http("127.0.0.1:0") {
+                Ok(s) => s,
+                Err(e) => {
+                    return Err(format!("no bindable port: {e}").into());
+                }
+            };
             let real = s.server_addr().to_ip().map(|a| a.port()).unwrap_or(0);
             Ok((s, real))
         }
