@@ -116,3 +116,35 @@ jobs:
           # bundle, so the flat path finds nothing and the check fails having
           # verified nothing at all.
           "$PY" scripts/verify_update.py app/src-tauri/target
+
+  installer:
+    # Gate the ARTIFACT, not just the build. The failure this catches happened for
+    # real on 2026-10-08: an installed app registered version 0.3.0 while its binary
+    # had come from a commit that predated the feature 0.3.0 claimed, and nothing in
+    # CI would have said so. The version-equality assertion below is the point —
+    # it enforces "a version identifies its content" mechanically.
+    needs: build
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || (github.ref_type == 'tag' && github.ref_name) || 'v0.0.0-dev' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the installer this release just built
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # A draft release is not public, but the workflow token can read it.
+          gh release download "$TAG" -p "*x64-setup.exe" --dir ./dist
+          ls -l dist/
+
+      - name: Install it, verify the version it registers, prove it runs, uninstall
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The assertions live in scripts/verify_installer.sh, which is also
+          # runnable by hand on a real machine, so CI and a human exercise the same
+          # code instead of two implementations that drift.
+          bash scripts/verify_installer.sh "$(ls dist/*x64-setup.exe | head -1)" "$TAG"
