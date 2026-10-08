@@ -1,0 +1,56 @@
+name: build-exe
+# Builds the Windows exe from whatever main holds, without tagging or touching
+# any release. Dispatch-only: it exists so the binary can be exercised the way
+# the spec's acceptance checks demand (run it, drive its control plane), while
+# rule 3 keeps every published version identifying its content.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: app
+        run: npm ci || npm install
+
+      - name: Build (release)
+        working-directory: app
+        shell: bash
+        run: npx tauri build
+
+      - name: The binary must say which commit it came from
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -l app/src-tauri/target/release/forge-studio.exe
+          sha256sum app/src-tauri/target/release/forge-studio.exe | tee exe.sha256
+
+      - name: Upload the exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: forge-studio-exe
+          path: |
+            app/src-tauri/target/release/forge-studio.exe
+            exe.sha256
+          if-no-files-found: error
