@@ -26,16 +26,27 @@ ROOT = Path(__file__).resolve().parents[1]
 CONF = ROOT / "app" / "src-tauri" / "tauri.conf.json"
 
 
-def load_public_key():
-    """Return (key_id, Ed25519PublicKey) from the pubkey in tauri.conf.json.
+def load_public_key(source=None):
+    """Return (key_id, Ed25519PublicKey).
 
-    Tauri stores the base64 of an entire minisign public key *file* there, so it
-    is decoded once to text and once again to the binary key.
+    Defaults to the key baked into the app, read from tauri.conf.json. Pass a
+    base64 string or a path to test against a different key, which is how the
+    verifier itself is tested.
+
+    Tauri stores the base64 of an entire minisign public key *file*, so it is
+    decoded once to text and once again to the binary key.
     """
-    conf = json.loads(CONF.read_text(encoding="utf-8"))
-    stored = conf["plugins"]["updater"]["pubkey"]
-    text = base64.b64decode(stored).decode("utf-8")
-    blob = base64.b64decode(text.strip().splitlines()[-1])
+    if source is None:
+        conf = json.loads(CONF.read_text(encoding="utf-8"))
+        stored = conf["plugins"]["updater"]["pubkey"]
+    else:
+        candidate = Path(source)
+        stored = candidate.read_text(encoding="utf-8").strip() if candidate.is_file() else source
+    try:
+        text = base64.b64decode(stored).decode("utf-8")
+        blob = base64.b64decode(text.strip().splitlines()[-1])
+    except Exception as e:
+        raise SystemExit(f"cannot read the public key (expected base64): {e}") from e
     algorithm, key_id, raw = blob[:2], blob[2:10], blob[10:]
     if algorithm != b"Ed" or len(raw) != 32:
         raise SystemExit(f"unexpected public key format: {algorithm!r}, {len(raw)} bytes")
@@ -102,17 +113,26 @@ def collect(targets):
     return files
 
 
-def main():
-    targets = sys.argv[1:]
-    if not targets:
-        raise SystemExit(__doc__.strip().splitlines()[-2].strip())
+def main(argv=None):
+    import argparse
 
-    key_id, key = load_public_key()
-    print(f"checking against the key baked into the app ({key_id.hex()})")
+    ap = argparse.ArgumentParser(
+        prog="verify_update.py",
+        description="verify minisign signatures against the key baked into the app",
+    )
+    ap.add_argument("targets", nargs="+", help="a directory to scan, or individual .sig files")
+    ap.add_argument(
+        "--pubkey",
+        help="a different key: a base64 string, or a path to one. Defaults to tauri.conf.json",
+    )
+    args = ap.parse_args(argv)
 
-    sigs = collect(targets)
+    key_id, key = load_public_key(args.pubkey)
+    print(f"checking against key {key_id.hex()}")
+
+    sigs = collect(args.targets)
     if not sigs:
-        raise SystemExit(f"no *.sig files found under: {' '.join(targets)}")
+        raise SystemExit(f"no *.sig files found under: {' '.join(args.targets)}")
 
     failed = 0
     for sig_path in sigs:
@@ -121,8 +141,6 @@ def main():
             print(f"  MISSING   {payload_path.name} (the file this signature names)")
             failed += 1
             continue
-        # A .sig download may be named <artifact>.sig where the artifact has
-        # further suffix stripped differently; fall back to a name match.
         ok, detail = verify_one(sig_path, payload_path, key_id, key)
         print(("  ok        " if ok else "  FAILED    ") + detail)
         failed += 0 if ok else 1

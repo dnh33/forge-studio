@@ -45,3 +45,16 @@ jobs:
       - name: Test the MCP server against a stub control plane
         working-directory: mcp
         run: node --test
+
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --quiet pytest cryptography
+      - name: Test the release tooling
+        run: python -m pytest tests -q
+      - name: The verifier must accept the project's own fixtures
+        run: python scripts/verify_update.py tests/fixtures --pubkey tests/fixtures/pubkey.txt
