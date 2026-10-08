@@ -79,13 +79,70 @@ function addItem(id = "", seed = "", line = "") {
       aria-label="Seed for this item" inputmode="numeric" autocomplete="off">
     <textarea data-k="line" rows="2" placeholder="What is in this image?" spellcheck="false"
       aria-label="Prompt line for this item">${esc(line)}</textarea>
-    <button class="ghost small" data-k="del" title="Remove this item" aria-label="Remove this item">&#10005;</button>`;
+    <div class="item-actions">
+      <button class="ghost small" data-k="sharpen" title="Propose a sharper line (you approve it)"
+        aria-label="Sharpen this line">&#10022;</button>
+      <button class="ghost small" data-k="del" title="Remove this item" aria-label="Remove this item">&#10005;</button>
+    </div>`;
   const ta = row.querySelector('[data-k="line"]');
   ta.addEventListener("input", () => grow(ta));
   requestAnimationFrame(() => grow(ta));
   row.querySelector('[data-k="del"]').addEventListener("click", () => row.remove());
+  row.querySelector('[data-k="sharpen"]').addEventListener("click", () => sharpenRow(row));
   $("#items").appendChild(row);
   return row;
+}
+
+// --------------------------------------------------------------- sharpen
+//
+// `or_sharpen` shipped in Rust with no caller: its own comment referred to a
+// button that did not exist. It rewrites one prompt line. It must never apply
+// silently, so it proposes and the operator accepts.
+
+function wordDiff(oldLine, newLine) {
+  const aged = new Set(oldLine.toLowerCase().split(/\s+/));
+  return newLine.split(/(\s+)/).map((piece) => {
+    const bare = piece.trim().toLowerCase().replace(/[^\w'-]/g, "");
+    if (!bare) return esc(piece);
+    return aged.has(bare) ? esc(piece) : `<mark>${esc(piece)}</mark>`;
+  }).join("");
+}
+
+async function sharpenRow(row) {
+  const ta = row.querySelector('[data-k="line"]');
+  const line = (ta.value || "").trim();
+  if (!line) { toast("Write a line first.", "bad"); return; }
+  const model = $("#orModel") ? $("#orModel").value : "";
+  let proposal;
+  try {
+    proposal = await call("or_sharpen", { line, model });
+  } catch { return; }
+  proposal = String(proposal || "").trim();
+  if (!proposal || proposal === line) { toast("The model proposed no change.", "bad"); return; }
+  showProposal(row, ta, line, proposal);
+}
+
+function showProposal(row, ta, oldLine, proposal) {
+  const old = row.nextElementSibling;
+  if (old && old.classList.contains("proposal")) old.remove();
+  const panel = document.createElement("div");
+  panel.className = "proposal";
+  panel.innerHTML = `
+    <div class="was">was: ${esc(oldLine)}</div>
+    <div class="new">${wordDiff(oldLine, proposal)}</div>
+    <p class="fine">Highlighted words are new. Nothing is applied until you accept.</p>
+    <div class="row">
+      <button class="primary small" data-a="take">Accept</button>
+      <button class="ghost small" data-a="drop">Discard</button>
+    </div>`;
+  panel.querySelector('[data-a="take"]').onclick = () => {
+    ta.value = proposal;
+    grow(ta);
+    panel.remove();
+    toast("Line replaced with the accepted rewrite.", "ok");
+  };
+  panel.querySelector('[data-a="drop"]').onclick = () => panel.remove();
+  row.insertAdjacentElement("afterend", panel);
 }
 $("#addItem").addEventListener("click", () => addItem());
 
@@ -484,22 +541,152 @@ async function showOutputs(run, auto = false) {
 function openModal(run, files, auto) {
   $("#modalTitle").textContent = `Run #${run.number} produced ${files.length} image(s)`;
   $("#modalBody").innerHTML = auto
-    ? "The pipeline is done. Preview below — take the download, or close and find them in the Gallery."
+    ? "The pipeline is done. Decide on each one below, then take the download."
     : `From the <code>renders</code> branch.`;
-  const grid = $("#modalGrid");
-  grid.innerHTML = "";
-  files.slice(0, 24).forEach((f) => {
-    const t = document.createElement("div");
-    t.className = "tile";
-    t.innerHTML = `<img src="${esc(f.url)}" loading="lazy" alt=""><div class="cap">${esc(f.file)}</div>`;
-    t.querySelector("img").onclick = () => opener.openUrl(f.url);
-    grid.appendChild(t);
-  });
+  triage.reset(files);
   $("#modal").classList.remove("hidden");
   $("#modalGet").onclick = () => downloadUrls(files.map((f) => f.url));
   $("#modalSkip").onclick = () => $("#modal").classList.add("hidden");
   $("#modalClose").onclick = () => $("#modal").classList.add("hidden");
+  $("#modalRedispatch").onclick = () => triage.redispatch();
 }
+
+// ------------------------------------------------------------------- triage
+//
+// A keyboard pass over a run's output. Each decision is written straight to
+// `renders/<set>/<image>.decision.json` on the renders branch, beside the image
+// and its sidecar, so what was kept and why is versioned with the work. This
+// pass never dispatches and never rewrites a prompt; it only records.
+
+const TRIAGE_REASONS = ["muddy", "off-style", "wrong-subject", "wrong-composition",
+  "artifacts", "duplicate", "close-but-off"];
+const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const triage = {
+  files: [], idx: 0, set: "", tiles: [], existing: new Map(), pending: new Map(),
+
+  reset(files) {
+    this.files = files || [];
+    this.idx = 0;
+    this.tiles = [];
+    this.existing = new Map();
+    this.pending = new Map();
+    this.set = (this.files[0] && this.files[0].set) || "";
+    this.build();
+    this.loadExisting();
+    this.paint();
+  },
+
+  build() {
+    const grid = $("#modalGrid");
+    grid.innerHTML = "";
+    this.files.slice(0, 24).forEach((f, i) => {
+      const t = document.createElement("div");
+      t.className = "tile";
+      t.innerHTML = `<img src="${esc(f.url)}" loading="lazy" alt="">`
+        + `<div class="cap">${esc(f.file)}</div><div class="badge"></div>`;
+      t.querySelector("img").onclick = () => { this.idx = i; this.paint(); opener.openUrl(f.url); };
+      grid.appendChild(t);
+      this.tiles.push(t);
+    });
+  },
+
+  async loadExisting() {
+    if (!this.set) return;
+    try {
+      const all = await call("decisions", { set: this.set });
+      Object.entries(all || {}).forEach(([path, d]) => {
+        const stem = path.split("/").pop().replace(".decision.json", "");
+        this.existing.set(stem, d);
+      });
+    } catch { /* no history is not an error for a fresh set */ }
+    this.paint();
+  },
+
+  stemOf(file) { return String(file).replace(/\.(png|jpg)$/i, ""); },
+
+  decisionFor(file) {
+    const stem = this.stemOf(file);
+    return this.pending.get(stem) || this.existing.get(stem) || null;
+  },
+
+  paint() {
+    this.tiles.forEach((t, i) => {
+      const f = this.files[i];
+      if (!f) return;
+      t.classList.toggle("sel", i === this.idx);
+      const d = this.decisionFor(f.file);
+      t.classList.remove("keep", "reject", "undecided");
+      const badge = t.querySelector(".badge");
+      if (!d) { badge.textContent = ""; return; }
+      t.classList.add(d.verdict);
+      badge.textContent = d.reason ? `${d.verdict}: ${d.reason}` : d.verdict;
+    });
+  },
+
+  move(delta) {
+    if (!this.files.length) return;
+    this.idx = (this.idx + delta + this.files.length) % this.files.length;
+    this.paint();
+    const t = this.tiles[this.idx];
+    if (t) t.scrollIntoView({ block: "nearest" });
+  },
+
+  async decide(verdict, reason, note) {
+    const f = this.files[this.idx];
+    if (!f) return;
+    const stem = this.stemOf(f.file);
+    this.pending.set(stem, { verdict, reason: reason || null, note: note || null });
+    this.paint();
+    try {
+      await call("save_decision", {
+        set: f.set, file: f.file, verdict, reason: reason || null, note: note || null,
+      });
+    } catch (e) {
+      // Keep the optimistic mark but say so: the record did not land.
+      toast("Could not save that decision.", "bad");
+    }
+  },
+
+  rejectedKeys() {
+    const keys = new Set();
+    this.files.forEach((f) => {
+      const d = this.decisionFor(f.file);
+      if (!d || d.verdict !== "reject") return;
+      const m = String(f.file).match(
+        new RegExp("^" + reEsc(f.set) + "-(.+)-s\\d+\\.(png|jpg)$")
+      );
+      if (m) keys.add(m[1]);
+    });
+    return [...keys];
+  },
+
+  async redispatch() {
+    const keys = this.rejectedKeys();
+    if (!keys.length) { toast("Nothing marked reject.", "bad"); return; }
+    const set = this.set;
+    toast(`Re-rendering ${keys.length} rejected item(s) in ${set}…`, "ok");
+    await call("dispatch_render", {
+      set, only: keys.join(","), variants: "1", steps: "4", shards: String(keys.length), adhoc: "",
+    });
+    $("#modal").classList.add("hidden");
+  },
+};
+
+document.addEventListener("keydown", (e) => {
+  if ($("#modal").classList.contains("hidden")) return;
+  const tag = (e.target && e.target.tagName) || "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  const k = e.key;
+  if (k === "ArrowRight") { triage.move(1); e.preventDefault(); return; }
+  if (k === "ArrowLeft") { triage.move(-1); e.preventDefault(); return; }
+  if (k === "k") { triage.decide("keep"); return; }
+  if (k === "r") { triage.decide("reject"); return; }
+  if (k === "u") { triage.decide("undecided"); return; }
+  if (k >= "1" && k <= "7") {
+    triage.decide("reject", TRIAGE_REASONS[Number(k) - 1]);
+  }
+});
 
 // ------------------------------------------------------------------ gallery
 

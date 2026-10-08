@@ -283,6 +283,147 @@ pub async fn save_set(slug: String, body: String) -> Result<String, String> {
     Ok(v["commit"]["sha"].as_str().unwrap_or("").into())
 }
 
+// ---------------------------------------------------------------- decisions
+
+/// Verdicts and reasons are CLOSED sets. A free-text reason would rot into
+/// unusable prose within a month, and this file is the compounding record.
+const VERDICTS: [&str; 3] = ["keep", "reject", "undecided"];
+const REASONS: [&str; 7] = [
+    "muddy",
+    "off-style",
+    "wrong-subject",
+    "wrong-composition",
+    "artifacts",
+    "duplicate",
+    "close-but-off",
+];
+const NOTE_MAX: usize = 200;
+const DECISION_FETCH_CAP: usize = 200;
+
+pub struct Decision {
+    pub set: String,
+    pub file: String,
+    pub verdict: String,
+    pub reason: Option<String>,
+    pub note: Option<String>,
+}
+
+fn plain_name(value: &str, what: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value.contains('/')
+        || value.contains('\\')
+        || value.contains("..")
+        || value.contains('\0')
+    {
+        return Err(format!("{what} must be a plain name, got {value:?}"));
+    }
+    Ok(())
+}
+
+/// Write `renders/<set>/<image>.decision.json` on the renders branch, beside the
+/// image and its sidecar, so the verdict is git-versioned with the render.
+pub async fn save_decision(d: Decision) -> Result<String, String> {
+    plain_name(&d.set, "set")?;
+    plain_name(&d.file, "file")?;
+    if !VERDICTS.contains(&d.verdict.as_str()) {
+        return Err(format!("verdict must be one of {VERDICTS:?}, got {:?}", d.verdict));
+    }
+    if let Some(r) = d.reason.as_deref() {
+        if !REASONS.contains(&r) {
+            return Err(format!("reason must be one of {REASONS:?}, got {r:?}"));
+        }
+    }
+    let note = d.note.unwrap_or_default();
+    let note = note.trim();
+    if note.chars().count() > NOTE_MAX {
+        return Err(format!("note is limited to {NOTE_MAX} characters"));
+    }
+
+    let stem = d.file.trim_end_matches(".png").trim_end_matches(".jpg");
+    let path = format!("renders/{}/{stem}.decision.json", d.set);
+    let at_unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let body = json!({
+        "image": d.file,
+        "verdict": d.verdict,
+        "reason": d.reason,
+        "note": if note.is_empty() { Value::Null } else { json!(note) },
+        "at_unix": at_unix,
+    })
+    .to_string();
+
+    let c = client()?;
+    let api = format!("{API}/repos/{OWNER}/{REPO}/contents/{path}");
+    let existing = c.get(&api).send().await.map_err(|e| e.to_string())?;
+    let sha = if existing.status().is_success() {
+        let v: Value = existing.json().await.unwrap_or(json!({}));
+        v["sha"].as_str().map(|s| s.to_string())
+    } else {
+        None
+    };
+    let mut payload = json!({
+        "message": format!("forge-studio: {} {}", d.verdict, stem),
+        "content": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, body.as_bytes()),
+        "branch": RENDERS_BRANCH,
+    });
+    if let Some(s) = sha {
+        payload["sha"] = json!(s);
+    }
+    let r = c
+        .put(&api)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let st = r.status();
+    let txt = r.text().await.unwrap_or_default();
+    if !st.is_success() {
+        return Err(format!("GitHub {st}: {}", short(&txt)));
+    }
+    let v: Value = serde_json::from_str(&txt).unwrap_or(json!({}));
+    Ok(v["commit"]["sha"].as_str().unwrap_or("").into())
+}
+
+/// Every recorded decision for one set, keyed by its path. Capped, and tolerant
+/// of a single unreadable file: a decision that cannot be parsed is skipped
+/// rather than failing the whole pass.
+pub async fn decisions(set: String) -> Result<Value, String> {
+    plain_name(&set, "set")?;
+    let c = client()?;
+    let url = format!("{API}/repos/{OWNER}/{REPO}/git/trees/{RENDERS_BRANCH}?recursive=1");
+    let v = get(&c, &url).await?;
+    let prefix = format!("renders/{set}/");
+    let mut out = serde_json::Map::new();
+    for entry in v["tree"].as_array().cloned().unwrap_or_default() {
+        if out.len() >= DECISION_FETCH_CAP {
+            break;
+        }
+        let path = entry["path"].as_str().unwrap_or("").to_string();
+        if !path.starts_with(&prefix) || !path.ends_with(".decision.json") {
+            continue;
+        }
+        let api = format!("{API}/repos/{OWNER}/{REPO}/contents/{path}?ref={RENDERS_BRANCH}");
+        let Ok(file) = get(&c, &api).await else { continue };
+        let raw: String = file["content"]
+            .as_str()
+            .unwrap_or("")
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect();
+        let Ok(bytes) =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, raw.as_bytes())
+        else {
+            continue;
+        };
+        if let Ok(d) = serde_json::from_slice::<Value>(&bytes) {
+            out.insert(path, d);
+        }
+    }
+    Ok(Value::Object(out))
+}
+
 // ---------------------------------------------------------------- dispatch
 
 pub struct DispatchOpts {

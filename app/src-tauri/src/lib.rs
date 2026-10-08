@@ -73,6 +73,32 @@ async fn run_outputs(run_id: u64) -> Result<Vec<RenderImage>, String> {
     github::run_outputs(run_id).await
 }
 
+// ---------------------------------------------------------------- decisions
+
+#[tauri::command]
+async fn save_decision(
+    set: String,
+    file: String,
+    verdict: String,
+    reason: Option<String>,
+    note: Option<String>,
+) -> Result<String, String> {
+    github::save_decision(github::Decision {
+        set,
+        file,
+        verdict,
+        reason,
+        note,
+    })
+    .await
+}
+
+/// Every recorded decision for a set, keyed by path on the renders branch.
+#[tauri::command]
+async fn decisions(set: String) -> Result<serde_json::Value, String> {
+    github::decisions(set).await
+}
+
 #[tauri::command]
 async fn download_image(url: String, dir: String) -> Result<String, String> {
     github::download(url, dir).await
@@ -203,6 +229,8 @@ pub fn run() {
             get_run,
             list_renders,
             run_outputs,
+            save_decision,
+            decisions,
             download_image,
             pick_folder,
             or_status,

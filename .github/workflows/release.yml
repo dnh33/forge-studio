@@ -13,7 +13,7 @@ on:
         options: ["true", "false"]
       tag:
         description: "Tag to build for. Must match the app version. Empty falls back to the pushed tag"
-        default: "v0.2.1"
+        default: "v0.3.0"
         type: string
 
 permissions:
