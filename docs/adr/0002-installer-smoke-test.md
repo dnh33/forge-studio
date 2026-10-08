@@ -48,3 +48,28 @@ identifies its content, enforced mechanically instead of by an argument.
   machine. Per-user installs need no elevation, so this works unattended.
 - The uninstall step must tolerate a missing registration on a rerun, or reruns
   will fail for the wrong reason.
+
+## Implemented, 2026-10-08
+
+`scripts/verify_installer.sh` holds the assertions, and the `installer` job in
+`release.yml` runs it against the installer the release just built. One
+implementation, so CI and a human on a real machine exercise the same code rather
+than two that drift.
+
+Verified **both ways** before trusting it, which is the only way to know a gate can
+fail at all:
+
+| case | result |
+|---|---|
+| expecting `0.3.0` against a `0.3.1` installer | exit **1**, version check FAILED |
+| expecting `0.3.1` | exit **0**, 5/5 ok |
+| app reinstalled afterwards | still installed at `E:\Forge Studio`, `0.3.1` |
+
+It also caught two bugs in the script's own first draft: a `check()` that took an
+`ok`/`bad` sentinel while being handed `yes`/`no` (so it failed everything while the
+log said the opposite), and an exit code measured through a pipe, which reports the
+pipe's status rather than the script's.
+
+**Not yet exercised:** the CI wiring itself. The job runs for the first time on the
+next release, because rebuilding `v0.3.1` to test it would have moved a tag Danie has
+installed, which is the exact fault this ADR exists to prevent.
