@@ -133,6 +133,33 @@ Two lessons from writing these, both mine rather than the app's:
 - The script assumed `%LOCALAPPDATA%\<productName>`. This install is on `E:`, so it
   finds the binary through the registry, which is the only thing that knows.
 
+## The engine/UI split, implemented and verified live (2026-10-08)
+
+ADR-0001's spec (`docs/specs/2026-10-08-engine-split.md`) is implemented. What
+changed: `--headless` runs the engine with no window; the window adopts a
+running engine or binds one, before its webview opens. The descriptor gains
+`"role": "engine"`. `control::start()` is gone: the setup closure calls
+`run_engine()` directly. Verification, all against a scratch build of commit
+`209856e` (sha256 `839f0591...`, built by the `build-exe` workflow, run
+37807920982), driven on this machine:
+
+| spec check | result | evidence |
+|---|---|---|
+| 1 headless starts engine, no window | pass | descriptor written with `role:engine`; `/status` 200; `MainWindowTitle` empty; alive and 200 after 30 s |
+| 2 no second engine | pass | GUI launched while headless ran: two processes, window title on the new one, descriptor pid unchanged (20908) |
+| 3 engine outlives window | pass | killed the window (17856); `/status` still answered, engine 20908 alive |
+| 4 auth enforced headless | pass | no token 401, wrong token 401, right token 200 |
+| 5 suite against headless engine | pass | `live_smoke.sh --engine`: **13 ok, 0 failed** |
+| 6 stale descriptor does not wedge startup | pass | killed engine, left descriptor, relaunched: new pid 17656 took port 7317 and rewrote the descriptor |
+
+`live_smoke.sh` gained an `--engine` mode: drive a built binary in `--headless`
+instead of installing, same checks after launch. Its `check()` now matches
+ERE; the outputs-check alternation was a literal `|` in BRE (the exact lesson
+recorded above, caught again). CI (fmt, check, clippy `-D warnings`, tests,
+mcp, scripts) green at run 37809621434, commit `209856e`. Not done: the
+installed-app path still runs the old binary until the next release; `ideate`
+and `advise` remain unverified (no key, unchanged).
+
 ## Next actions
 
 1. When the `v0.3.1` build finishes: verify all three platforms report their
