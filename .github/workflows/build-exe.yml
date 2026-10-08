@@ -34,10 +34,12 @@ jobs:
         working-directory: app
         run: npm ci || npm install
 
-      - name: Build (release)
+      - name: Build (release, binary only)
         working-directory: app
         shell: bash
-        run: npx tauri build
+        # No bundles: signing the updater artifact needs the release private
+        # key, and a scratch build must never go near it. The exe is the point.
+        run: npx tauri build --no-bundle
 
       - name: The binary must say which commit it came from
         shell: bash
