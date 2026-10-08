@@ -143,8 +143,9 @@ Two lessons from writing these, both mine rather than the app's:
    (`scripts/verify_installer.sh` + the `installer` job, verified both ways locally).
 3. ADR-0001: write the engine/UI split spec before writing the code.
 4. ADR-0003: implement onboarding (create-from-template) and the actor gate.
-5. Ask Danie the visibility question directly: public and free, or private and
-   metered.
+5. ~~Ask Danie the visibility question~~ — **not a question.** The pipeline is public
+   by his instruction in the project's first message, and that is settled (ADR-0003).
+   State the consequence once and stop asking.
 6. **Audit the test suites against the "only where failure is costly" rule.** Some
    suites were written after the fact to reach a count, which is exactly the habit
    that rule forbids. Keep the guards that caught real bugs (preview publish

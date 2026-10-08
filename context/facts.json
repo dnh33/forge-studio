@@ -48,10 +48,12 @@
     "adr_0002": { "title": "installer smoke test in CI", "status": "approved", "date": "2026-10-08" },
     "adr_0003": { "title": "one-click onboarding and the account lock", "status": "approved-direction", "date": "2026-10-08" }
   },
+  "settled": [
+    "the pipeline is PUBLIC by the founder's instruction in the project's first message ('Setup a new public render pipeline on my github'); prompts, renders and run logs are world-readable by choice, which buys unlimited free Action minutes",
+    "no Cloudflare website: the studio is a desktop app and does not need one"
+  ],
   "open_questions": [
-    "public and free, or private and metered (public exposes prompts and renders)",
-    "cloudflare for the site (Pages) or for a Worker",
-    "actor gate: hard refusal or loud warning"
+    "actor gate: hard refusal or loud warning in the run summary"
   ],
   "standing_constraints": [
     "local GPU rendering is experimental: it saturated 15.9 of 16.3 GB and froze the desktop; cloud CI is the default and local GPU is never run unprompted",

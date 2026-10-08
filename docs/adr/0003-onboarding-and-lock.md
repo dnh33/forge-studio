@@ -33,9 +33,9 @@ about what it protects. So state first what is already true:
   forks to maintain.
 - Their Actions run on their account and their quota. The generated repository holds
   `context/facts.json` with their login, so the workflows can be configured for them.
-- **Cloudflare is opt-in and separate**: a Cloudflare Pages project for the site, and
-  optionally a Worker. Its API token is stored in the OS keyring like the OpenRouter
-  key already is, never in the webview and never in the repository.
+- **Cloudflare is not part of this.** The studio is a desktop app; it does not need a
+  website on Cloudflare. Onboarding is GitHub only: the user's own account, their own
+  repository, their own quota.
 - The studio is **scoped to exactly one repository**, chosen at onboarding. There is
   no cross-account path: the app talks to one repo with the user's own token.
 
@@ -62,10 +62,19 @@ so it is correct for his account and for everyone else's without a fork.
   of the repository and into dispatch inputs would hide them from `prompts/` while
   leaving them in the run UI. Not a fix; do not pretend otherwise.
 
-## Open questions for Danie
+## Settled, and not to be re-opened (2026-10-08)
 
-1. Public and free, or private and metered? This is the only decision here that
-   costs money.
-2. Is Cloudflare wanted for the **site** (Pages) or for a **Worker**? They need
-   different onboarding.
-3. Should the actor gate be a hard refusal, or a loud warning in the run summary?
+**The pipeline is public, by the founder's own instruction**, given in the first
+message of the project: *"Setup a new public render pipeline on my github"*. The
+consequence is accepted and understood: prompts in `prompts/*.json`, every image on
+the `renders` branch, and the run logs are world-readable, and that is the trade that
+buys unlimited free Action minutes. **This was raised repeatedly afterwards as an open
+question, which was wrong** — it had been decided before any work started. State a
+consequence once, then stop asking.
+
+**Cloudflare is out of scope.** "It's a desktop app, it doesn't need a website on cf."
+Onboarding is GitHub only.
+
+## Open question for Danie
+
+1. Should the actor gate be a hard refusal, or a loud warning in the run summary?

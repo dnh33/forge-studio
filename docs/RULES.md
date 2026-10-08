@@ -57,6 +57,11 @@ ships an MCP server on top of it, so an agent can do everything the window can.
     implementation, then treating "my tests pass" as completion. That proves nothing
     about the requirement, because the same mind wrote both sides. Tests written
     after the fact to reach a number are the same mistake wearing a green tick.
+11. **Do not re-raise a decision the owner already made.** Read their first
+    instruction before asking about scope. "Setup a new public render pipeline" settled
+    visibility before a single file existed, and it was still being asked as if open
+    much later. State a consequence once, then act on the decision. Re-litigating
+    settled ground spends the owner's attention on something they already paid for.
 
 ## Commands
 
