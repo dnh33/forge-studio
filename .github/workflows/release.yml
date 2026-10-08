@@ -103,9 +103,12 @@ jobs:
           # pubkey compiled into the app. Check that here, where the bundles
           # still exist, rather than discovering it on a user's machine.
           #
-          # --break-system-packages: macOS runners use Homebrew Python, which
-          # refuses a system-wide install with "externally-managed-environment"
-          # (PEP 668). Ubuntu and Windows do not care, and the flag is accepted
-          # everywhere, so this is the portable form.
-          python3 -m pip install --quiet --break-system-packages cryptography
-          python3 scripts/verify_update.py app/src-tauri/target/release/bundle
+          # A venv, not the system interpreter: macOS runners ship a Homebrew
+          # python3 that refuses `-m pip` outright (PEP 668), and --break-system-
+          # packages does not help when pip itself will not start. venv is stdlib
+          # on every runner image, so this is the portable form.
+          python3 -m venv .verify-venv
+          PY=".verify-venv/bin/python"
+          [ -x "$PY" ] || PY=".verify-venv/Scripts/python.exe"
+          "$PY" -m pip install --upgrade pip cryptography
+          "$PY" scripts/verify_update.py app/src-tauri/target/release/bundle
