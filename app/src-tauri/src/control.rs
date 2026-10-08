@@ -685,7 +685,7 @@ pub fn run_engine() -> Engine {
                     url: String::new(),
                 }
             }
-            },
+            }
         },
     }
 }
