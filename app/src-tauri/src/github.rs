@@ -424,6 +424,119 @@ pub async fn decisions(set: String) -> Result<Value, String> {
     Ok(Value::Object(out))
 }
 
+// ---------------------------------------------------------------- previews
+
+#[derive(Serialize)]
+pub struct PreviewImage {
+    pub file: String,
+    pub data_url: String,
+}
+
+/// The preview images a run produced, as data URLs.
+///
+/// A preview is never published to the renders branch, so it exists only as a run
+/// artifact. GitHub serves an artifact zip from a storage host *after a
+/// redirect*, and a bearer token must not follow it, so the redirect is refused
+/// by policy and resolved by hand, then the signed URL is fetched with no
+/// Authorization header at all.
+pub async fn run_previews(run_id: u64) -> Result<Vec<PreviewImage>, String> {
+    let api = client()?;
+    let list = get(
+        &api,
+        &format!("{API}/repos/{OWNER}/{REPO}/actions/runs/{run_id}/artifacts"),
+    )
+    .await?;
+
+    // Same credentials, but never follow a redirect with them attached.
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::AUTHORIZATION,
+        format!("Bearer {}", token()?).parse().map_err(|_| "bad token")?,
+    );
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        "forge-studio/0.1".parse().unwrap(),
+    );
+    let strict = reqwest::Client::builder()
+        .default_headers(headers)
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| e.to_string())?;
+    let plain = reqwest::Client::builder()
+        .user_agent("forge-studio/0.1")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    const CAP: usize = 24;
+    let mut out = Vec::new();
+    for artifact in list["artifacts"].as_array().cloned().unwrap_or_default() {
+        if out.len() >= CAP {
+            break;
+        }
+        let name = artifact["name"].as_str().unwrap_or("");
+        if !name.starts_with("preview-") {
+            continue;
+        }
+        let id = artifact["id"].as_u64().unwrap_or(0);
+        let resp = strict
+            .get(format!("{API}/repos/{OWNER}/{REPO}/actions/artifacts/{id}/zip"))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let bytes = if resp.status().is_redirection() {
+            let signed = resp
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .ok_or("artifact redirect carried no Location")?
+                .to_string();
+            let r = plain.get(&signed).send().await.map_err(|e| e.to_string())?;
+            if !r.status().is_success() {
+                continue;
+            }
+            r.bytes().await.map_err(|e| e.to_string())?
+        } else if resp.status().is_success() {
+            resp.bytes().await.map_err(|e| e.to_string())?
+        } else {
+            continue;
+        };
+
+        let Ok(mut archive) = zip::ZipArchive::new(std::io::Cursor::new(bytes)) else {
+            continue;
+        };
+        for i in 0..archive.len() {
+            if out.len() >= CAP {
+                break;
+            }
+            let Ok(mut entry) = archive.by_index(i) else {
+                continue;
+            };
+            let entry_name = entry.name().to_string();
+            if !entry_name.ends_with(".png") {
+                continue;
+            }
+            let mut buf = Vec::new();
+            if std::io::Read::read_to_end(&mut entry, &mut buf).is_err() {
+                continue;
+            }
+            out.push(PreviewImage {
+                file: entry_name
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&entry_name)
+                    .to_string(),
+                data_url: format!(
+                    "data:image/png;base64,{}",
+                    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &buf)
+                ),
+            });
+        }
+    }
+    out.sort_by(|a, b| a.file.cmp(&b.file));
+    Ok(out)
+}
+
 // ---------------------------------------------------------------- dispatch
 
 pub struct DispatchOpts {

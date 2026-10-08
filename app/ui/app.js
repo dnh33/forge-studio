@@ -526,6 +526,19 @@ function watch(runId) {
 // ------------------------------------------------------------------ outputs / modal
 
 async function showOutputs(run, auto = false) {
+  // A preview never publishes, so its images exist only as run artifacts. Look
+  // there FIRST: one call, no waiting, and it is the only place a preview lives.
+  try {
+    const previews = await call("run_previews", { runId: run.id });
+    if (previews.length) {
+      return openModal(
+        run,
+        previews.map((p) => ({ set: "", file: p.file, url: p.data_url })),
+        auto, true
+      );
+    }
+  } catch { /* fall through to the published path */ }
+
   // the publish step lands a moment after render; retry briefly
   for (let i = 0; i < 10; i++) {
     // Tauri v2 exposes a Rust command's parameters to JS in camelCase, so
@@ -535,15 +548,24 @@ async function showOutputs(run, auto = false) {
     if (files.length) return openModal(run, files, auto);
     await new Promise((r) => setTimeout(r, 5000));
   }
-  toast("Run done, but no published images found (check the logs).", "bad");
+  toast("Run done. Nothing published, and no preview artifacts for it.", "bad");
 }
 
-function openModal(run, files, auto) {
-  $("#modalTitle").textContent = `Run #${run.number} produced ${files.length} image(s)`;
-  $("#modalBody").innerHTML = auto
-    ? "The pipeline is done. Decide on each one below, then take the download."
-    : `From the <code>renders</code> branch.`;
-  triage.reset(files);
+function openModal(run, files, auto, isPreview = false) {
+  $("#modalTitle").textContent = isPreview
+    ? `Preview of run #${run.number} — ${files.length} image(s) at quarter size`
+    : `Run #${run.number} produced ${files.length} image(s)`;
+  $("#modalBody").innerHTML = isPreview
+    ? "These are previews: small canvas, few steps, never published. Fix the lines you do not like and dispatch the real thing."
+    : auto
+      ? "The pipeline is done. Decide on each one below, then take the download."
+      : `From the <code>renders</code> branch.`;
+  // Triage writes a decision beside a PUBLISHED render, so it does not apply to a
+  // preview: there is nothing on the renders branch to attach it to.
+  $("#triageKeys").classList.toggle("hidden", isPreview);
+  $("#modalRedispatch").classList.toggle("hidden", isPreview);
+  if (isPreview) triage.reset(files, false); else triage.reset(files);
+  $("#modalGet").classList.toggle("hidden", isPreview);
   $("#modal").classList.remove("hidden");
   $("#modalGet").onclick = () => downloadUrls(files.map((f) => f.url));
   $("#modalSkip").onclick = () => $("#modal").classList.add("hidden");
@@ -564,16 +586,18 @@ const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const triage = {
   files: [], idx: 0, set: "", tiles: [], existing: new Map(), pending: new Map(),
+  interactive: true,
 
-  reset(files) {
+  reset(files, interactive = true) {
     this.files = files || [];
     this.idx = 0;
     this.tiles = [];
     this.existing = new Map();
     this.pending = new Map();
+    this.interactive = interactive;
     this.set = (this.files[0] && this.files[0].set) || "";
     this.build();
-    this.loadExisting();
+    if (interactive) this.loadExisting();
     this.paint();
   },
 
@@ -615,7 +639,7 @@ const triage = {
       const f = this.files[i];
       if (!f) return;
       t.classList.toggle("sel", i === this.idx);
-      const d = this.decisionFor(f.file);
+      const d = this.interactive ? this.decisionFor(f.file) : null;
       t.classList.remove("keep", "reject", "undecided");
       const badge = t.querySelector(".badge");
       if (!d) { badge.textContent = ""; return; }
@@ -633,6 +657,7 @@ const triage = {
   },
 
   async decide(verdict, reason, note) {
+    if (!this.interactive) return;
     const f = this.files[this.idx];
     if (!f) return;
     const stem = this.stemOf(f.file);
@@ -675,6 +700,7 @@ const triage = {
 
 document.addEventListener("keydown", (e) => {
   if ($("#modal").classList.contains("hidden")) return;
+  if (!triage.interactive) return;
   const tag = (e.target && e.target.tagName) || "";
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
   const k = e.key;

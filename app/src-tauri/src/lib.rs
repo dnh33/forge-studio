@@ -99,6 +99,12 @@ async fn decisions(set: String) -> Result<serde_json::Value, String> {
     github::decisions(set).await
 }
 
+/// Preview images live ONLY as run artifacts, never on the renders branch.
+#[tauri::command]
+async fn run_previews(run_id: u64) -> Result<Vec<github::PreviewImage>, String> {
+    github::run_previews(run_id).await
+}
+
 #[tauri::command]
 async fn download_image(url: String, dir: String) -> Result<String, String> {
     github::download(url, dir).await
@@ -231,6 +237,7 @@ pub fn run() {
             run_outputs,
             save_decision,
             decisions,
+            run_previews,
             download_image,
             pick_folder,
             or_status,
