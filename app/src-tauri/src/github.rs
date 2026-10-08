@@ -558,95 +558,6 @@ pub async fn run_previews(run_id: u64) -> Result<Vec<PreviewImage>, String> {
     Ok(out)
 }
 
-#[cfg(test)]
-mod decision_tests {
-    use super::*;
-
-    fn base() -> Decision {
-        Decision {
-            set: "portraits".into(),
-            file: "portraits-marshal-s1101.png".into(),
-            verdict: "keep".into(),
-            reason: None,
-            note: None,
-        }
-    }
-
-    // Validation runs BEFORE any token or network call, so these are offline.
-
-    #[test]
-    fn an_unknown_verdict_is_refused() {
-        let mut d = base();
-        d.verdict = "brilliant".into();
-        let e = validate_decision(&d).unwrap_err();
-        assert!(e.contains("verdict"), "{e}");
-    }
-
-    #[test]
-    fn an_unknown_reason_is_refused() {
-        let mut d = base();
-        d.verdict = "reject".into();
-        d.reason = Some("meh".into());
-        let e = validate_decision(&d).unwrap_err();
-        assert!(e.contains("reason"), "{e}");
-    }
-
-    #[test]
-    fn every_documented_reason_is_accepted() {
-        for r in REASONS {
-            let mut d = base();
-            d.verdict = "reject".into();
-            d.reason = Some(r.to_string());
-            validate_decision(&d).unwrap_or_else(|e| panic!("reason {r} was rejected: {e}"));
-        }
-    }
-
-    #[test]
-    fn an_undecided_or_kept_verdict_needs_no_reason() {
-        for v in VERDICTS {
-            let mut d = base();
-            d.verdict = v.into();
-            validate_decision(&d).unwrap_or_else(|e| panic!("verdict {v} was rejected: {e}"));
-        }
-    }
-
-    #[test]
-    fn an_overlong_note_is_refused() {
-        let mut d = base();
-        d.note = Some("x".repeat(NOTE_MAX + 1));
-        let e = validate_decision(&d).unwrap_err();
-        assert!(e.contains("note"), "{e}");
-    }
-
-    #[test]
-    fn a_note_at_the_limit_is_accepted() {
-        let mut d = base();
-        d.note = Some("x".repeat(NOTE_MAX));
-        validate_decision(&d).expect("a note at the limit is allowed");
-    }
-
-    #[test]
-    fn a_note_is_measured_in_characters_not_bytes() {
-        let mut d = base();
-        // 200 multi-byte characters are 600 bytes but still within the limit.
-        d.note = Some("ø".repeat(NOTE_MAX));
-        validate_decision(&d).expect("a 200-character note is allowed whatever its byte length");
-    }
-
-    #[test]
-    fn a_path_in_the_set_or_the_file_is_refused() {
-        for bad in ["../etc", "a/b", "a\\b", ""] {
-            let mut d = base();
-            d.set = bad.into();
-            assert!(validate_decision(&d).unwrap_err().contains("plain name"));
-
-            let mut d = base();
-            d.file = bad.into();
-            assert!(validate_decision(&d).unwrap_err().contains("plain name"));
-        }
-    }
-}
-
 // ---------------------------------------------------------------- dispatch
 
 pub struct DispatchOpts {
@@ -860,4 +771,93 @@ pub async fn download(url: String, dir: String) -> Result<String, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     std::fs::write(&dest, &bytes).map_err(|e| e.to_string())?;
     Ok(dest.to_string_lossy().to_string())
+}
+
+#[cfg(test)]
+mod decision_tests {
+    use super::*;
+
+    fn base() -> Decision {
+        Decision {
+            set: "portraits".into(),
+            file: "portraits-marshal-s1101.png".into(),
+            verdict: "keep".into(),
+            reason: None,
+            note: None,
+        }
+    }
+
+    // Validation runs BEFORE any token or network call, so these are offline.
+
+    #[test]
+    fn an_unknown_verdict_is_refused() {
+        let mut d = base();
+        d.verdict = "brilliant".into();
+        let e = validate_decision(&d).unwrap_err();
+        assert!(e.contains("verdict"), "{e}");
+    }
+
+    #[test]
+    fn an_unknown_reason_is_refused() {
+        let mut d = base();
+        d.verdict = "reject".into();
+        d.reason = Some("meh".into());
+        let e = validate_decision(&d).unwrap_err();
+        assert!(e.contains("reason"), "{e}");
+    }
+
+    #[test]
+    fn every_documented_reason_is_accepted() {
+        for r in REASONS {
+            let mut d = base();
+            d.verdict = "reject".into();
+            d.reason = Some(r.to_string());
+            validate_decision(&d).unwrap_or_else(|e| panic!("reason {r} was rejected: {e}"));
+        }
+    }
+
+    #[test]
+    fn an_undecided_or_kept_verdict_needs_no_reason() {
+        for v in VERDICTS {
+            let mut d = base();
+            d.verdict = v.into();
+            validate_decision(&d).unwrap_or_else(|e| panic!("verdict {v} was rejected: {e}"));
+        }
+    }
+
+    #[test]
+    fn an_overlong_note_is_refused() {
+        let mut d = base();
+        d.note = Some("x".repeat(NOTE_MAX + 1));
+        let e = validate_decision(&d).unwrap_err();
+        assert!(e.contains("note"), "{e}");
+    }
+
+    #[test]
+    fn a_note_at_the_limit_is_accepted() {
+        let mut d = base();
+        d.note = Some("x".repeat(NOTE_MAX));
+        validate_decision(&d).expect("a note at the limit is allowed");
+    }
+
+    #[test]
+    fn a_note_is_measured_in_characters_not_bytes() {
+        let mut d = base();
+        // 200 multi-byte characters are 600 bytes but still within the limit.
+        d.note = Some("ø".repeat(NOTE_MAX));
+        validate_decision(&d).expect("a 200-character note is allowed whatever its byte length");
+    }
+
+    #[test]
+    fn a_path_in_the_set_or_the_file_is_refused() {
+        for bad in ["../etc", "a/b", "a\\b", ""] {
+            let mut d = base();
+            d.set = bad.into();
+            assert!(validate_decision(&d).unwrap_err().contains("plain name"));
+
+            let mut d = base();
+            d.file = bad.into();
+            assert!(validate_decision(&d).unwrap_err().contains("plain name"));
+        }
+    }
 }
