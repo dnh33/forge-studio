@@ -22,7 +22,7 @@ Forge Studio is a desktop app that drives a free image pipeline. No GPU, no paid
 | repository | what it is |
 |---|---|
 | **[forge-images](https://github.com/dnh33/forge-images)** | the image pipeline. Prompt sets in, contact sheets out, rendered on GitHub's public runners. |
-| **[forge-motion](https://github.com/dnh33/forge-motion)** | planned. Short video, the same shape. |
+| **[forge-motion](https://github.com/dnh33/forge-motion)** | experimental. Local GPU short video. **Not the default**: the cloud pipeline is, because a local run can freeze the machine. |
 | **forge-studio** | this app. The desktop face of both. |
 
 The forge is not idle. The studio is its console.
