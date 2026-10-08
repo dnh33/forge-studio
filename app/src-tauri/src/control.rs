@@ -422,6 +422,311 @@ pub fn descriptor_path() -> Option<String> {
     Some(app_dir().join("control.json").to_string_lossy().to_string())
 }
 
+// ------------------------------------------------------------- engine discovery
+//
+// The engine is the control plane plus everything it drives. It may belong to
+// this process or to a process already running (a `--headless` launch, or
+// another window). Discovery decides which, so two engines never fight over
+// the port.
+
+/// An engine as the descriptor publishes it. The `role` field was added with
+/// the engine/UI split; a descriptor without it is still a valid engine, so it
+/// is optional on read and always written from now on.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Engine {
+    pub pid: u32,
+    pub port: u16,
+    pub token: String,
+    pub url: String,
+}
+
+/// Read an engine out of a descriptor value. Nothing here is trusted beyond
+/// shape: the port still has to answer before this counts as a live engine.
+fn engine_from_value(v: &serde_json::Value) -> Option<Engine> {
+    Some(Engine {
+        pid: v.get("pid")?.as_u64()? as u32,
+        port: v.get("port")?.as_u64()? as u16,
+        token: v.get("token")?.as_str()?.to_string(),
+        url: v.get("url")?.as_str()?.to_string(),
+    })
+}
+
+fn read_descriptor() -> Option<Engine> {
+    let path = app_dir().join("control.json");
+    let raw = std::fs::read_to_string(path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    engine_from_value(&v)
+}
+
+/// Publish the descriptor for an engine this process owns.
+fn write_engine_descriptor(port: u16, tok: &str) {
+    let descriptor = serde_json::json!({
+        "name": "forge-studio", "role": "engine",
+        "port": port, "token": tok,
+        "pid": std::process::id(), "url": format!("http://127.0.0.1:{port}")
+    });
+    let _ = std::fs::write(app_dir().join("control.json"), descriptor.to_string());
+}
+
+/// What a probe concluded about a port. Refused means nothing answered, which
+/// is the normal state after a crash; a refusal must free the port to be taken,
+/// never wedge startup behind a stale file.
+pub enum Probe {
+    /// Something answered as forge-studio with the right token.
+    Ours(Engine),
+    /// Something answered, but not as ours. Do not touch that port.
+    Foreign,
+    /// Nothing answered.
+    Refused,
+}
+
+/// Ask a port whether an engine of ours is listening there. This must be a real
+/// request, never a file existence check: a stale descriptor is normal, and the
+/// answer has to come from the socket.
+pub fn probe(port: u16, token: &str) -> Probe {
+    let addr = format!("127.0.0.1:{port}");
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_millis(2500))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            log_line(&format!("forge-studio probe of {addr} could not build a client: {e}"));
+            return Probe::Refused;
+        }
+    };
+    let resp = match client
+        .get(format!("http://{addr}/"))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+    {
+        Ok(r) => r,
+        Err(e) => {
+            let reason = if e.is_connect() {
+                "connection refused".to_string()
+            } else {
+                e.to_string()
+            };
+            log_line(&format!("forge-studio probe of {addr}: {reason}"));
+            return Probe::Refused;
+        }
+    };
+    if !resp.status().is_success() {
+        log_line(&format!(
+            "forge-studio probe of {addr}: answered {}",
+            resp.status()
+        ));
+        return Probe::Foreign;
+    }
+    let body: serde_json::Value = match resp.json() {
+        Ok(v) => v,
+        Err(_) => {
+            log_line(&format!("forge-studio probe of {addr}: not a JSON endpoint"));
+            return Probe::Foreign;
+        }
+    };
+    if body.get("name").and_then(|n| n.as_str()) != Some("forge-studio") {
+        log_line(&format!("forge-studio probe of {addr}: not forge-studio"));
+        return Probe::Foreign;
+    }
+    // Reaching here means the endpoint accepted our token, which only an engine
+    // of ours would. The describe payload carries no token field, so the token
+    // we just used is the engine's token as far as any client is concerned.
+    match (
+        body.get("pid").and_then(|v| v.as_u64()),
+        body.get("port").and_then(|v| v.as_u64()),
+    ) {
+        (Some(pid), Some(_)) => Probe::Ours(Engine {
+            pid: pid as u32,
+            port,
+            token: token.to_string(),
+            url: format!("http://{addr}"),
+        }),
+        _ => {
+            log_line(&format!(
+                "forge-studio probe of {addr}: answered as forge-studio but without a pid"
+            ));
+            Probe::Foreign
+        }
+    }
+}
+
+/// Find a live engine this user already has: the descriptor names a pid and a
+/// port, the port answers as ours, and the pid is alive. Any failure of those
+/// is no engine, not an error to report.
+pub fn discover() -> Option<Engine> {
+    let claimed = read_descriptor()?;
+    if claimed.pid == std::process::id() {
+        // Our own descriptor from an earlier restart in this process.
+        return None;
+    }
+    match probe(claimed.port, &claimed.token) {
+        Probe::Ours(mut e) => {
+            if e.pid != claimed.pid {
+                log_line(&format!(
+                    "forge-studio discovery: descriptor says pid {} but the engine on port {} says {}",
+                    claimed.pid, e.port, e.pid
+                ));
+                e.pid = claimed.pid;
+            }
+            Some(e)
+        }
+        Probe::Foreign => {
+            log_line(&format!(
+                "forge-studio discovery: port {} is held by something else; leaving it alone",
+                claimed.port
+            ));
+            None
+        }
+        Probe::Refused => {
+            log_line(&format!(
+                "forge-studio discovery: stale descriptor (pid {} not answering on port {}); taking the port",
+                claimed.pid, claimed.port
+            ));
+            None
+        }
+    }
+}
+
+/// What this process should do about the engine.
+pub enum Plan {
+    /// The control plane is switched off.
+    Off,
+    /// An engine already runs; adopt it.
+    Attach(Engine),
+    /// No engine anywhere; bind one here.
+    Own,
+}
+
+/// Decide, once, what this process does about the engine.
+pub fn plan() -> Plan {
+    if std::env::var("FORGE_CONTROL")
+        .map(|v| v.eq_ignore_ascii_case("off"))
+        .unwrap_or(false)
+    {
+        return Plan::Off;
+    }
+    match discover() {
+        Some(e) => Plan::Attach(e),
+        None => Plan::Own,
+    }
+}
+
+/// Bind the desired port, falling back to an ephemeral one. Returns the server
+/// and the port actually bound, because the fallback changes it.
+fn bind_desired(port: u16) -> std::io::Result<(Server, u16)> {
+    match Server::http(format!("127.0.0.1:{port}")) {
+        Ok(s) => {
+            let real = s.server_addr().to_ip().map(|a| a.port()).unwrap_or(port);
+            Ok((s, real))
+        }
+        Err(e) => {
+            log_line(&format!(
+                "forge-studio engine could not bind 127.0.0.1:{port} ({e}); trying an ephemeral port"
+            ));
+            let s = Server::http("127.0.0.1:0")?;
+            let real = s.server_addr().to_ip().map(|a| a.port()).unwrap_or(0);
+            Ok((s, real))
+        }
+    }
+}
+
+/// Become or adopt the engine, and publish whatever the truth now is. Called
+/// from the GUI setup and from the headless entry point alike. Never fails the
+/// caller: every path logs and returns an answer.
+pub fn run_engine() -> Engine {
+    match plan() {
+        Plan::Off => {
+            log_line("forge-studio control plane disabled (FORGE_CONTROL=off)");
+            Engine {
+                pid: 0,
+                port: 0,
+                token: String::new(),
+                url: String::new(),
+            }
+        }
+        Plan::Attach(e) => {
+            log_line(&format!(
+                "forge-studio attached to the engine already running at {} (pid {}); not starting a second one",
+                e.url, e.pid
+            ));
+            e
+        }
+        Plan::Own => {
+            let want: u16 = std::env::var("FORGE_CONTROL_PORT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(DEFAULT_PORT);
+            match bind_desired(want) {
+            Ok((server, port)) => {
+                let tok = token();
+                let dir = app_dir();
+                let _ = std::fs::write(dir.join("control-token"), &tok);
+                write_engine_descriptor(port, &tok);
+                log_line(&format!(
+                    "forge-studio engine listening on http://127.0.0.1:{port} (pid {}, token in {})",
+                    std::process::id(),
+                    dir.join("control.json").display()
+                ));
+                std::thread::spawn(move || serve(server, &tok));
+                Engine {
+                    pid: std::process::id(),
+                    port,
+                    token: tok,
+                    url: format!("http://127.0.0.1:{port}"),
+                }
+            }
+            Err(e) => {
+                log_line(&format!("forge-studio engine could not bind any port: {e}"));
+                Engine {
+                    pid: 0,
+                    port: 0,
+                    token: String::new(),
+                    url: String::new(),
+                }
+            }
+            },
+        },
+    }
+}
+
+/// The GUI hook: put the engine behind the window, out of its way. Never fails
+/// the app; a failure to serve is logged and the window still opens.
+///
+/// The window now reaches `run_engine` directly, inside the Tauri setup, so an
+/// adoption or a bind has finished before the first webview opens. This
+/// function remains for callers outside the Tauri lifecycle.
+pub fn start() {
+    std::thread::spawn(|| {
+        let _ = run_engine();
+    });
+}
+
+/// The engine, with no window and no webview: start it and stay alive for the
+/// life of the process. If the server is taken from us or dies, watch the port
+/// and take it back when it goes quiet, so a headless engine does not quietly
+/// stop being an engine.
+pub fn headless() {
+    log_line("forge-studio starting headless: engine only, no window");
+    loop {
+        let engine = run_engine();
+        if engine.pid != std::process::id() {
+            // Attached to someone else's engine. Keep watch from a distance: if
+            // its owner goes away, the next pass takes the port over.
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            continue;
+        }
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            match probe(engine.port, &engine.token) {
+                Probe::Ours(_) => continue,
+                _ => break,
+            }
+        }
+        log_line("forge-studio engine stopped answering; starting it again");
+    }
+}
+
 /// The request loop, over an already-bound server. Separate from `start` so a
 /// test can drive it on a throwaway port with a known token, with no Tauri app
 /// and no network involved.
@@ -617,5 +922,79 @@ mod tests {
             .as_array()
             .map(|a| !a.is_empty())
             .unwrap_or(false));
+    }
+
+    // ------------------------------------------------------ engine discovery
+
+    #[test]
+    fn a_descriptor_without_a_role_is_still_an_engine() {
+        // Pre-split installs wrote no "role". Discovery must accept them.
+        let v = serde_json::json!({
+            "name": "forge-studio", "pid": 123u64, "port": 7317u64,
+            "token": "t", "url": "http://127.0.0.1:7317"
+        });
+        let e = engine_from_value(&v).expect("a role-less descriptor is an engine");
+        assert_eq!(e.pid, 123);
+        assert_eq!(e.port, 7317);
+    }
+
+    #[test]
+    fn a_descriptor_missing_a_field_is_no_engine() {
+        let v = serde_json::json!({ "name": "forge-studio", "pid": 1u64, "port": 7317u64 });
+        assert!(
+            engine_from_value(&v).is_none(),
+            "a half-written descriptor must not be trusted as an engine"
+        );
+    }
+
+    #[test]
+    fn a_serving_control_plane_probes_as_ours() {
+        let port = test_server();
+        match probe(port, TOK) {
+            Probe::Ours(e) => {
+                assert_eq!(e.port, port, "the engine answers on the probed port");
+                assert_eq!(e.url, format!("http://127.0.0.1:{port}"));
+            }
+            other => panic!("a forge-studio server must probe as ours, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_port_speaking_for_someone_else_is_foreign() {
+        // A valid HTTP response with JSON that is not forge-studio: the port is
+        // alive but held by another program, and must be left alone.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        std::thread::spawn(move || {
+            if let Ok((mut sock, _)) = listener.accept() {
+                let body = br#"{"name":"someone-else"}"#;
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = sock.write_all(head.as_bytes());
+                let _ = sock.write_all(body.as_slice());
+            }
+        });
+        assert!(
+            matches!(probe(port, TOK), Probe::Foreign),
+            "a stranger on the port must never be adopted as our engine"
+        );
+    }
+
+    #[test]
+    fn a_dead_port_is_refused_not_wedged() {
+        // Bind and immediately drop: the port exists but nothing answers, which
+        // is exactly what a stale descriptor leaves behind.
+        let port = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+            let p = l.local_addr().expect("addr").port();
+            drop(l);
+            p
+        };
+        assert!(
+            matches!(probe(port, TOK), Probe::Refused),
+            "a closed port must read as a refusal, freeing it for a new engine"
+        );
     }
 }

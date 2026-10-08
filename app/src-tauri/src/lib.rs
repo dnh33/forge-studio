@@ -214,6 +214,18 @@ async fn install_update(app: tauri::AppHandle) -> Result<String, String> {
     Ok(format!("installed {version}"))
 }
 
+// ------------------------------------------------------------ the headless engine
+//
+// `--headless` runs the engine with no window: the control plane comes up, the
+// process stays alive, and no webview is ever created. The engine belongs to
+// whoever bound it first, and the window either owns it or is a viewport on
+// the engine another process (often a `--headless` run) already started.
+
+/// The engine alone. Used by main.rs when it sees `--headless`.
+pub fn headless() {
+    control::headless();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -222,7 +234,9 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|_app| {
             // Full agent control over loopback HTTP. Local-only, token-gated.
-            crate::control::start();
+            // The engine is adopted or bound here, before the window opens, so
+            // a viewport can only ever find the one engine this user has.
+            control::run_engine();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
