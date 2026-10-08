@@ -491,7 +491,9 @@ pub fn probe(port: u16, token: &str) -> Probe {
     {
         Ok(c) => c,
         Err(e) => {
-            log_line(&format!("forge-studio probe of {addr} could not build a client: {e}"));
+            log_line(&format!(
+                "forge-studio probe of {addr} could not build a client: {e}"
+            ));
             return Probe::Refused;
         }
     };
@@ -521,7 +523,9 @@ pub fn probe(port: u16, token: &str) -> Probe {
     let body: serde_json::Value = match resp.json() {
         Ok(v) => v,
         Err(_) => {
-            log_line(&format!("forge-studio probe of {addr}: not a JSON endpoint"));
+            log_line(&format!(
+                "forge-studio probe of {addr}: not a JSON endpoint"
+            ));
             return Probe::Foreign;
         }
     };
@@ -658,35 +662,35 @@ pub fn run_engine() -> Engine {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(DEFAULT_PORT);
             match bind_desired(want) {
-            Ok((server, port)) => {
-                let tok = token();
-                let dir = app_dir();
-                let _ = std::fs::write(dir.join("control-token"), &tok);
-                write_engine_descriptor(port, &tok);
-                log_line(&format!(
+                Ok((server, port)) => {
+                    let tok = token();
+                    let dir = app_dir();
+                    let _ = std::fs::write(dir.join("control-token"), &tok);
+                    write_engine_descriptor(port, &tok);
+                    log_line(&format!(
                     "forge-studio engine listening on http://127.0.0.1:{port} (pid {}, token in {})",
                     std::process::id(),
                     dir.join("control.json").display()
                 ));
-                std::thread::spawn(move || serve(server, &tok));
-                Engine {
-                    pid: std::process::id(),
-                    port,
-                    token: tok,
-                    url: format!("http://127.0.0.1:{port}"),
+                    std::thread::spawn(move || serve(server, &tok));
+                    Engine {
+                        pid: std::process::id(),
+                        port,
+                        token: tok,
+                        url: format!("http://127.0.0.1:{port}"),
+                    }
+                }
+                Err(e) => {
+                    log_line(&format!("forge-studio engine could not bind any port: {e}"));
+                    Engine {
+                        pid: 0,
+                        port: 0,
+                        token: String::new(),
+                        url: String::new(),
+                    }
                 }
             }
-            Err(e) => {
-                log_line(&format!("forge-studio engine could not bind any port: {e}"));
-                Engine {
-                    pid: 0,
-                    port: 0,
-                    token: String::new(),
-                    url: String::new(),
-                }
-            }
-            }
-        },
+        }
     }
 }
 
