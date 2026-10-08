@@ -21,15 +21,21 @@ if [ "$MODE" = "--engine" ]; then
   shift 2
 fi
 INSTALLER="${1:-}"
-RUN_ID="${2:-}"
-PREVIEW_RUN_ID="${3:-}"
+if [ "$MODE" = "--engine" ]; then
+  # --engine consumed the first two slots, so the optional ids follow it.
+  RUN_ID="${1:-}"
+  PREVIEW_RUN_ID="${2:-}"
+else
+  RUN_ID="${2:-}"
+  PREVIEW_RUN_ID="${3:-}"
+fi
 BASE="http://127.0.0.1:7317"
 PASS=0
 FAIL=0
 
 say() { printf '\n=== %s ===\n' "$1"; }
-check() { # check <name> <expected-substring> <actual>
-  if printf '%s' "$3" | grep -q "$2"; then
+check() { # check <name> <expected-extended-regex> <actual>
+  if printf '%s' "$3" | grep -qE "$2"; then
     PASS=$((PASS + 1)); printf '  ok    %s\n' "$1"
   else
     FAIL=$((FAIL + 1)); printf '  FAIL  %s\n        wanted: %s\n        got:    %.160s\n' "$1" "$2" "$3"
