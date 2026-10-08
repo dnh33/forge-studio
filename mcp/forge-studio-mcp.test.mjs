@@ -127,16 +127,37 @@ test("initialize reports the server identity and protocol", async () => {
   assert.ok(msg.result.capabilities.tools, "the tools capability must be advertised");
 });
 
-test("tools/list returns the whole contract", async () => {
+test("tools/list returns exactly the tools the server implements", async () => {
   const msg = await rpc("tools/list", {});
-  const names = msg.result.tools.map((t) => t.name);
-  assert.equal(names.length, 12, `expected 12 tools, got ${names.length}: ${names.join(", ")}`);
-  for (const required of ["studio_status", "dispatch_render", "run_outputs", "download_images", "ideate"]) {
-    assert.ok(names.includes(required), `missing tool: ${required}`);
-  }
+  const names = msg.result.tools.map((t) => t.name).sort();
+  // The whole contract, named. A count alone rots silently in both directions:
+  // it passes when a tool is renamed and fails when one is added.
+  const expected = [
+    "advise",
+    "dispatch_render",
+    "download_images",
+    "get_run",
+    "get_set",
+    "ideate",
+    "list_decisions",
+    "list_renders",
+    "list_runs",
+    "list_sets",
+    "run_outputs",
+    "run_previews",
+    "save_decision",
+    "save_set",
+    "studio_status",
+  ].sort();
+  assert.deepEqual(names, expected, `tool set changed: ${names.join(", ")}`);
   for (const t of msg.result.tools) {
     assert.equal(typeof t.description, "string");
     assert.ok(t.description.length > 10, `${t.name} needs a real description`);
+  }
+  // Every tool a client can call must reach an endpoint the control plane serves,
+  // so a tool that exists in one place and not the other is a bug, not a feature.
+  for (const t of msg.result.tools) {
+    assert.ok(t.inputSchema && t.inputSchema.type === "object", `${t.name} needs an object schema`);
   }
 });
 
