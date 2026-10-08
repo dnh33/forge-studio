@@ -312,7 +312,11 @@ fn route(method: &Method, path: &str, body: &str) -> (u16, serde_json::Value) {
                 set: s("set", ""),
                 file: s("file", ""),
                 verdict: s("verdict", ""),
-                reason: if reason.is_empty() { None } else { Some(reason) },
+                reason: if reason.is_empty() {
+                    None
+                } else {
+                    Some(reason)
+                },
                 note: if note.is_empty() { None } else { Some(note) },
             };
             // Validation lives in save_decision, so an unknown verdict or reason

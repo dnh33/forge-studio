@@ -328,7 +328,10 @@ pub fn validate_decision(d: &Decision) -> Result<(), String> {
     plain_name(&d.set, "set")?;
     plain_name(&d.file, "file")?;
     if !VERDICTS.contains(&d.verdict.as_str()) {
-        return Err(format!("verdict must be one of {VERDICTS:?}, got {:?}", d.verdict));
+        return Err(format!(
+            "verdict must be one of {VERDICTS:?}, got {:?}",
+            d.verdict
+        ));
     }
     if let Some(r) = d.reason.as_deref() {
         if !REASONS.contains(&r) {
@@ -417,7 +420,9 @@ pub async fn decisions(set: String) -> Result<Value, String> {
             continue;
         }
         let api = format!("{API}/repos/{OWNER}/{REPO}/contents/{path}?ref={RENDERS_BRANCH}");
-        let Ok(file) = get(&c, &api).await else { continue };
+        let Ok(file) = get(&c, &api).await else {
+            continue;
+        };
         let raw: String = file["content"]
             .as_str()
             .unwrap_or("")
@@ -463,7 +468,9 @@ pub async fn run_previews(run_id: u64) -> Result<Vec<PreviewImage>, String> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
         reqwest::header::AUTHORIZATION,
-        format!("Bearer {}", token()?).parse().map_err(|_| "bad token")?,
+        format!("Bearer {}", token()?)
+            .parse()
+            .map_err(|_| "bad token")?,
     );
     headers.insert(
         reqwest::header::USER_AGENT,
@@ -491,7 +498,9 @@ pub async fn run_previews(run_id: u64) -> Result<Vec<PreviewImage>, String> {
         }
         let id = artifact["id"].as_u64().unwrap_or(0);
         let resp = strict
-            .get(format!("{API}/repos/{OWNER}/{REPO}/actions/artifacts/{id}/zip"))
+            .get(format!(
+                "{API}/repos/{OWNER}/{REPO}/actions/artifacts/{id}/zip"
+            ))
             .send()
             .await
             .map_err(|e| e.to_string())?;
