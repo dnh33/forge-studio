@@ -111,4 +111,8 @@ jobs:
           PY=".verify-venv/bin/python"
           [ -x "$PY" ] || PY=".verify-venv/Scripts/python.exe"
           "$PY" -m pip install --upgrade pip cryptography
-          "$PY" scripts/verify_update.py app/src-tauri/target/release/bundle
+          # Scan target/, not target/release: a cross-compiled build (the macOS
+          # jobs pass --target) nests its bundle under target/<triple>/release/
+          # bundle, so the flat path finds nothing and the check fails having
+          # verified nothing at all.
+          "$PY" scripts/verify_update.py app/src-tauri/target
