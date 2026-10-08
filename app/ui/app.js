@@ -471,7 +471,10 @@ function watch(runId) {
 async function showOutputs(run, auto = false) {
   // the publish step lands a moment after render; retry briefly
   for (let i = 0; i < 10; i++) {
-    const files = await call("run_outputs", { run_id: run.id });
+    // Tauri v2 exposes a Rust command's parameters to JS in camelCase, so
+    // `run_id` on the Rust side is `runId` here. Passing run_id silently fails
+    // with "missing required key runId".
+    const files = await call("run_outputs", { runId: run.id });
     if (files.length) return openModal(run, files, auto);
     await new Promise((r) => setTimeout(r, 5000));
   }
