@@ -537,6 +537,94 @@ pub async fn run_previews(run_id: u64) -> Result<Vec<PreviewImage>, String> {
     Ok(out)
 }
 
+#[cfg(test)]
+mod decision_tests {
+    use super::*;
+
+    fn base() -> Decision {
+        Decision {
+            set: "portraits".into(),
+            file: "portraits-marshal-s1101.png".into(),
+            verdict: "keep".into(),
+            reason: None,
+            note: None,
+        }
+    }
+
+    // Validation runs BEFORE any token or network call, so these are offline.
+
+    #[test]
+    fn an_unknown_verdict_is_refused() {
+        let mut d = base();
+        d.verdict = "brilliant".into();
+        let e = save_decision_blocking(d).unwrap_err();
+        assert!(e.contains("verdict"), "{e}");
+    }
+
+    #[test]
+    fn an_unknown_reason_is_refused() {
+        let mut d = base();
+        d.verdict = "reject".into();
+        d.reason = Some("meh".into());
+        let e = save_decision_blocking(d).unwrap_err();
+        assert!(e.contains("reason"), "{e}");
+    }
+
+    #[test]
+    fn every_documented_reason_is_accepted_by_validation() {
+        for r in REASONS {
+            let mut d = base();
+            d.verdict = "reject".into();
+            d.reason = Some(r.to_string());
+            // A valid record gets past validation and only then needs a token.
+            let e = save_decision_blocking(d).unwrap_err();
+            assert!(
+                !e.contains("reason") && !e.contains("verdict") && !e.contains("plain name"),
+                "reason {r} was rejected by validation: {e}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_overlong_note_is_refused() {
+        let mut d = base();
+        d.note = Some("x".repeat(NOTE_MAX + 1));
+        let e = save_decision_blocking(d).unwrap_err();
+        assert!(e.contains("note"), "{e}");
+    }
+
+    #[test]
+    fn a_note_at_the_limit_is_accepted() {
+        let mut d = base();
+        d.note = Some("x".repeat(NOTE_MAX));
+        let e = save_decision_blocking(d).unwrap_err();
+        assert!(!e.contains("note"), "{e}");
+    }
+
+    #[test]
+    fn a_path_in_the_set_or_the_file_is_refused() {
+        for bad in ["../etc", "a/b", "a\\b", ""] {
+            let mut d = base();
+            d.set = bad.into();
+            assert!(save_decision_blocking(d).unwrap_err().contains("plain name"));
+
+            let mut d = base();
+            d.file = bad.into();
+            assert!(save_decision_blocking(d).unwrap_err().contains("plain name"));
+        }
+    }
+
+    /// save_decision is async and needs a runtime; the validation it performs is
+    /// pure, so drive it through a minimal current-thread runtime.
+    fn save_decision_blocking(d: Decision) -> Result<String, String> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        rt.block_on(save_decision(d))
+    }
+}
+
 // ---------------------------------------------------------------- dispatch
 
 pub struct DispatchOpts {

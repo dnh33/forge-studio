@@ -155,6 +155,39 @@ const TOOLS = [
     },
   },
   {
+    name: "list_decisions",
+    description: "Every recorded keep/reject verdict for a set, with its reason code, keyed by path on the renders branch.",
+    inputSchema: {
+      type: "object",
+      properties: { set: { type: "string", description: "Set slug, e.g. 'portraits'" } },
+      required: ["set"], additionalProperties: false,
+    },
+  },
+  {
+    name: "save_decision",
+    description: "Record a keep/reject verdict beside one render. Reason must be one of: muddy, off-style, wrong-subject, wrong-composition, artifacts, duplicate, close-but-off.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        set: { type: "string" },
+        file: { type: "string", description: "Image filename, e.g. portraits-marshal-s1101.png" },
+        verdict: { type: "string", description: "keep | reject | undecided" },
+        reason: { type: "string", description: "Reason code, or omit" },
+        note: { type: "string", description: "Optional note, max 200 chars" },
+      },
+      required: ["set", "file", "verdict"], additionalProperties: false,
+    },
+  },
+  {
+    name: "run_previews",
+    description: "The preview images a run produced, as data URLs. Previews are never published to the renders branch, so this is the only way to see one.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "number", description: "Run id" } },
+      required: ["id"], additionalProperties: false,
+    },
+  },
+  {
     name: "ideate",
     description: "Turn a short brief into a coherent prompt set using the configured OpenRouter model. Returns set JSON ready for save_set or dispatch_render.",
     inputSchema: {
@@ -194,6 +227,9 @@ async function callTool(name, args) {
     case "get_run": return api("GET", `/run/${a.id}`);
     case "run_outputs": return api("GET", `/run/${a.id}/outputs`);
     case "list_renders": return api("GET", "/renders");
+    case "list_decisions": return api("GET", `/decisions/${encodeURIComponent(a.set)}`);
+    case "save_decision": return api("POST", "/decision", a);
+    case "run_previews": return api("GET", `/run/${a.id}/previews`);
     case "download_images": return api("POST", "/download", a);
     case "ideate": return api("POST", "/ideate", a);
     case "advise": return api("POST", "/advise", a);

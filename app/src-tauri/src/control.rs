@@ -166,7 +166,10 @@ fn describe(port: u16) -> serde_json::Value {
             "GET  /renders",
             "POST /download             body: {urls:[...], dir:\"C:/path\"}",
             "POST /ideate               body: {brief, model, count}",
-            "POST /advise               body: {question, context, model}"
+            "POST /advise               body: {question, context, model}",
+            "GET  /decisions/<set>      every recorded keep/reject, keyed by path",
+            "POST /decision             body: {set, file, verdict, reason, note}",
+            "GET  /run/<id>/previews    a preview run's images (artifacts, not the branch)"
         ]
     })
 }
@@ -296,6 +299,42 @@ fn route(method: &Method, path: &str, body: &str) -> (u16, serde_json::Value) {
                 Err(e) => (502, serde_json::json!({ "error": e })),
             }
         }
+        (&Method::Get, ["decisions", set]) => {
+            match tauri::async_runtime::block_on(crate::github::decisions(set.to_string())) {
+                Ok(v) => (200, v),
+                Err(e) => (502, serde_json::json!({ "error": e })),
+            }
+        }
+        (&Method::Post, ["decision"]) => {
+            let reason = s("reason", "");
+            let note = s("note", "");
+            let d = crate::github::Decision {
+                set: s("set", ""),
+                file: s("file", ""),
+                verdict: s("verdict", ""),
+                reason: if reason.is_empty() { None } else { Some(reason) },
+                note: if note.is_empty() { None } else { Some(note) },
+            };
+            // Validation lives in save_decision, so an unknown verdict or reason
+            // is a 400 here and never reaches the repository.
+            match tauri::async_runtime::block_on(crate::github::save_decision(d)) {
+                Ok(sha) => (200, serde_json::json!({ "saved": sha })),
+                Err(e) => (400, serde_json::json!({ "error": e })),
+            }
+        }
+        (&Method::Get, ["run", id, "previews"]) => match id.parse::<u64>() {
+            Ok(id) => match tauri::async_runtime::block_on(crate::github::run_previews(id)) {
+                Ok(v) => (
+                    200,
+                    serde_json::to_value(v).unwrap_or(serde_json::json!([])),
+                ),
+                Err(e) => (502, serde_json::json!({ "error": e })),
+            },
+            Err(_) => (
+                400,
+                serde_json::json!({ "error": "run id must be a number" }),
+            ),
+        },
         (&Method::Post, ["download"]) => {
             let dir = s("dir", "");
             if dir.is_empty() {
