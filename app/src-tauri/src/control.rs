@@ -471,6 +471,7 @@ fn write_engine_descriptor(port: u16, tok: &str) {
 /// What a probe concluded about a port. Refused means nothing answered, which
 /// is the normal state after a crash; a refusal must free the port to be taken,
 /// never wedge startup behind a stale file.
+#[derive(Debug)]
 pub enum Probe {
     /// Something answered as forge-studio with the right token.
     Ours(Engine),
@@ -618,7 +619,7 @@ pub fn plan() -> Plan {
 
 /// Bind the desired port, falling back to an ephemeral one. Returns the server
 /// and the port actually bound, because the fallback changes it.
-fn bind_desired(port: u16) -> std::io::Result<(Server, u16)> {
+fn bind_desired(port: u16) -> Result<(Server, u16), Box<dyn std::error::Error>> {
     match Server::http(format!("127.0.0.1:{port}")) {
         Ok(s) => {
             let real = s.server_addr().to_ip().map(|a| a.port()).unwrap_or(port);
@@ -672,7 +673,8 @@ pub fn run_engine() -> Engine {
                     std::process::id(),
                     dir.join("control.json").display()
                 ));
-                    std::thread::spawn(move || serve(server, &tok));
+                    let serve_tok = tok.clone();
+                    std::thread::spawn(move || serve(server, &serve_tok));
                     Engine {
                         pid: std::process::id(),
                         port,
@@ -756,54 +758,6 @@ pub fn serve(server: Server, tok: &str) {
         let (code, value) = route(&method, &path, &body);
         respond(request, code, value.to_string());
     }
-}
-
-/// Start the control plane on a background thread. Never fails the app: if the
-/// port is taken or the feature is off, it logs and returns.
-pub fn start() {
-    if std::env::var("FORGE_CONTROL")
-        .map(|v| v.eq_ignore_ascii_case("off"))
-        .unwrap_or(false)
-    {
-        log_line("forge-studio control plane disabled (FORGE_CONTROL=off)");
-        return;
-    }
-    let port: u16 = std::env::var("FORGE_CONTROL_PORT")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(DEFAULT_PORT);
-
-    std::thread::spawn(move || {
-        let addr =
-            std::env::var("FORGE_CONTROL_ADDR").unwrap_or_else(|_| format!("127.0.0.1:{port}"));
-        let server = match Server::http(&addr) {
-            Ok(s) => s,
-            Err(e) => {
-                log_line(&format!(
-                    "forge-studio control plane could not bind {addr}: {e}"
-                ));
-                return;
-            }
-        };
-        let real_port = server
-            .server_addr()
-            .to_ip()
-            .map(|a| a.port())
-            .unwrap_or(port);
-        let tok = token();
-        let dir = app_dir();
-        let descriptor = serde_json::json!({
-            "name": "forge-studio", "port": real_port, "token": tok,
-            "pid": std::process::id(), "url": format!("http://127.0.0.1:{real_port}")
-        });
-        let _ = std::fs::write(dir.join("control.json"), descriptor.to_string());
-        let _ = std::fs::write(dir.join("control-token"), &tok);
-        log_line(&format!(
-            "forge-studio control plane listening on http://127.0.0.1:{real_port} (token in {})",
-            dir.join("control.json").display()
-        ));
-        serve(server, &tok);
-    });
 }
 
 #[cfg(test)]
